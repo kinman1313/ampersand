@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#221813">
+<title>Ampersand</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23221813'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='46' fill='%23d39f8b'%3E%26%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: the household's projects are a stack of colour swatches (the palette cards); tasks sit beside them as cards with a project-coloured edge. */
+:root {
+  /* Palette: Wood Bark, Bright Brown, Astronaut Blue, Enchanted Blue, Raucous Orange, Shy Champagne Blush + Sage, Sand, Ocean, Plum, Ivory */
+  --bark: #30241e; --brown: #6d3f2f; --astronaut: #204759; --enchanted: #0e6f8d; --orange: #c4532c; --blush: #d39f8b;
+  --sage: #4d4934; --sand: #b79679; --ocean: #4a5f60; --plum: #562d30; --ivory: #dbc5ae;
+
+  --bg: #efe5d8;
+  --surface: #f8f1e8;
+  --surface-2: #e9ddcc;
+  --ink: #2a1f1a;
+  --muted: #6b5849;
+  --line: #d6c5b0;
+  --blue: #0e6f8d;
+  --orange: #c4532c;
+  --agent: #5d5a3e;
+  --both: #562d30;
+  --changed: #8a3d22;
+  --on-band: #f4eadc;
+  --focus: #0e6f8d;
+
+  --font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --font-body: "Albert Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #221813; --surface: #2f231d; --surface-2: #3a2b23; --ink: #efe2d1; --muted: #bea68f; --line: #4b3a30;
+    --blue: #4fa6c4; --orange: #e57b54; --agent: #b8b38c; --both: #e0ab97; --changed: #eba383; --focus: #4fa6c4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #221813; --surface: #2f231d; --surface-2: #3a2b23; --ink: #efe2d1; --muted: #bea68f; --line: #4b3a30;
+  --blue: #4fa6c4; --orange: #e57b54; --agent: #b8b38c; --both: #e0ab97; --changed: #eba383; --focus: #4fa6c4;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+button, select, textarea, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.wrap { max-width: 1060px; margin: 0 auto; padding: 18px 16px 64px; display: grid; gap: 18px; }
+
+/* Header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.amp {
+  font: italic 600 46px/0.8 var(--font-display);
+  background: linear-gradient(135deg, var(--blue) 15%, var(--orange) 85%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.word { font: 600 25px/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; }
+.who { display: flex; align-items: center; gap: 8px; }
+.who .mono { color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+.seg button .dot { width: 9px; height: 9px; border-radius: 50%; }
+.seg button[aria-pressed="true"] { background: var(--surface-2); }
+.c-blue .dot, .dot.c-blue { background: var(--blue); }
+.c-orange .dot, .dot.c-orange { background: var(--orange); }
+.mode { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mode .mono { color: var(--agent); }
+
+/* Capture */
+.capture { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 10px; }
+.capture label.lead { font: italic 500 24px/1.1 var(--font-display); }
+.cap-row { display: flex; gap: 10px; align-items: stretch; }
+.mic {
+  flex: 0 0 52px; height: 52px; border-radius: 50%; border: 0;
+  background: var(--ink); color: var(--bg); display: grid; place-items: center; align-self: center;
+}
+.mic[aria-pressed="true"] { background: var(--orange); color: #fff; box-shadow: 0 0 0 6px color-mix(in srgb, var(--orange) 25%, transparent); }
+.mic svg { width: 22px; height: 22px; }
+textarea#say {
+  flex: 1; min-height: 52px; resize: vertical; border: 1px solid var(--line); border-radius: 14px;
+  padding: 13px 14px; background: var(--bg); line-height: 1.4;
+}
+.btn {
+  border: 1px solid transparent; border-radius: 12px; padding: 9px 16px; font-weight: 600;
+  background: var(--ink); color: var(--bg);
+}
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn.small { padding: 6px 12px; font-size: 13.5px; border-radius: 10px; }
+.btn.link { background: none; border: 0; padding: 4px 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+.cap-row .btn { align-self: stretch; padding: 0 20px; }
+.cap-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px dashed var(--line); background: transparent; border-radius: 999px; padding: 4px 11px; font-size: 13px; color: var(--muted); }
+.chip:hover { color: var(--ink); border-style: solid; }
+.priv { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--muted); }
+.agent-line { font-family: var(--font-mono); font-size: 12px; color: var(--agent); min-height: 18px; display: flex; gap: 8px; align-items: center; }
+.agent-line.busy::before {
+  content: ""; width: 34px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--agent), transparent); background-size: 200% 100%;
+  animation: scan 1.4s linear infinite;
+}
+@keyframes scan { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* Summary */
+.summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; gap: 7px; align-items: center; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; background: var(--surface); border: 1px solid var(--line); }
+.pill b { font-family: var(--font-mono); font-weight: 500; }
+.pill.needs { border-color: var(--ink); }
+.pill.agreed { color: var(--both); border-color: var(--both); }
+.pill.agent { color: var(--agent); }
+
+/* Main grid */
+.main { display: grid; grid-template-columns: 290px 1fr; gap: 22px; align-items: start; }
+@media (max-width: 820px) { .main { grid-template-columns: 1fr; } }
+
+/* Swatch bands */
+.bands { display: grid; border-radius: 18px; overflow: hidden; position: sticky; top: 12px; box-shadow: 0 1px 0 var(--line); }
+@media (max-width: 820px) { .bands { position: static; } .band { min-height: 42px; padding: 8px 16px; } .band[aria-pressed="true"] { min-height: 60px; } .band .nm { font-size: 17px; } }
+.band {
+  border: 0; text-align: left; color: var(--on-band); padding: 12px 18px; min-height: 52px;
+  display: grid; gap: 2px; position: relative; transition: min-height .25s ease;
+  background-image:
+    radial-gradient(120% 140% at 90% 10%, rgba(255,255,255,.14), transparent 55%),
+    linear-gradient(100deg, rgba(0,0,0,.10), transparent 45%);
+}
+.band .mono { opacity: .8; font-size: 10.5px; }
+.band .nm { font: 600 19px/1.1 var(--font-display); letter-spacing: .3em; text-transform: uppercase; }
+.band[aria-pressed="true"] { min-height: 78px; }
+.band[aria-pressed="true"] .nm::after { content: ""; display: block; width: 34px; height: 1px; background: currentColor; margin-top: 8px; opacity: .8; }
+.b-all { background-color: var(--blush); color: var(--bark); }
+.b-home { background-color: var(--ocean); }
+.b-money { background-color: var(--sage); }
+.b-kids { background-color: var(--astronaut); }
+.b-weekend { background-color: var(--brown); }
+.b-us { background-color: var(--plum); }
+.b-mine { background-color: var(--sand); color: var(--bark); }
+
+/* Tasks */
+.list { display: grid; gap: 14px; }
+.list h2 { font: italic 500 26px/1.1 var(--font-display); margin: 0; }
+.list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.list-head .mono { color: var(--muted); }
+.task {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  padding: 16px 18px 14px 22px; display: grid; gap: 12px; position: relative; overflow: hidden;
+}
+.task::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: var(--c, var(--sand)); }
+.task.k-needs, .task.k-split { border-color: color-mix(in srgb, var(--ink) 45%, var(--line)); }
+.t-top { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.t-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); }
+.t-meta .overdue { color: var(--changed); }
+.task h3 { margin: 4px 0 0; font-size: 18px; line-height: 1.3; font-weight: 600; text-wrap: balance; }
+.status { flex: none; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); }
+.status.needs, .status.split { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.status.agreed { background: var(--both); color: var(--bg); border-color: var(--both); }
+.status.agent { color: var(--agent); border-color: var(--agent); }
+.status.booked { color: var(--both); border-color: var(--both); }
+.status.waiting, .status.open { color: var(--muted); }
+.note { margin: 0; font-size: 14px; color: var(--muted); }
+.note .mono { color: var(--agent); margin-right: 6px; }
+
+.opts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.opt { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; display: grid; gap: 7px; background: var(--bg); }
+.opt.mine { border-color: var(--me); box-shadow: inset 3px 0 0 var(--me); }
+.opt.passed { opacity: .62; }
+.opt-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.opt-head .vendor { color: var(--muted); font-size: 13px; }
+.tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--agent); }
+.tag.re { color: var(--changed); }
+.opt-title { margin: 0; font-weight: 600; }
+.opt-detail { margin: 0; font-size: 14px; color: var(--muted); }
+.terms { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .04em; font-variant-numeric: tabular-nums; background: var(--surface-2); border-radius: 8px; padding: 6px 9px; justify-self: start; }
+.opt-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.votes { display: flex; gap: 6px; flex-wrap: wrap; }
+.vote { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.vote.yes.c-blue { border-color: var(--blue); color: var(--blue); }
+.vote.yes.c-orange { border-color: var(--orange); color: var(--orange); }
+.vote .dot { width: 8px; height: 8px; border-radius: 50%; opacity: .35; }
+.vote.yes .dot { opacity: 1; }
+.opt-actions { display: flex; gap: 6px; }
+.stale { font-size: 12.5px; color: var(--changed); margin: 0; }
+
+.agreebox {
+  border-radius: 14px; padding: 14px; display: grid; gap: 10px;
+  background: color-mix(in srgb, var(--both) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--both) 45%, var(--line));
+}
+.join { display: flex; align-items: center; gap: 0; height: 30px; }
+.join .sw { width: 44px; height: 22px; }
+.join .sw.c-blue { background: var(--blue); border-radius: 11px 0 0 11px; }
+.join .sw.c-orange { background: var(--orange); border-radius: 0 11px 11px 0; }
+.join .amp-mini { font: italic 600 28px/1 var(--font-display); color: var(--both); margin: 0 8px; order: 3; }
+.fresh .join .sw.c-blue { animation: inL .7s cubic-bezier(.2,.8,.2,1); }
+.fresh .join .sw.c-orange { animation: inR .7s cubic-bezier(.2,.8,.2,1); }
+@keyframes inL { from { transform: translateX(-18px); opacity: .2; } }
+@keyframes inR { from { transform: translateX(18px); opacity: .2; } }
+.agreebox p { margin: 0; }
+.agreebox .small { font-size: 13.5px; color: var(--muted); max-width: 62ch; }
+.book-row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.book-row label { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.book-row select { border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; background: var(--surface); min-width: 230px; }
+.book-row .btn { background: var(--both); color: var(--bg); }
+
+.voided { border: 1px dashed var(--changed); border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; }
+.voided .v-title { margin: 0; font-weight: 700; color: var(--changed); }
+.voided p { margin: 0; font-size: 13.5px; color: var(--muted); }
+.diff { border-collapse: collapse; font-size: 13.5px; width: 100%; max-width: 520px; }
+.diff th, .diff td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.diff th { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.diff td.was { text-decoration: line-through; text-decoration-color: var(--changed); color: var(--muted); }
+.diff td.now { color: var(--changed); font-weight: 600; }
+.diff-wrap { overflow-x: auto; }
+
+.bookbox { border-radius: 14px; padding: 12px 14px; background: var(--surface-2); display: grid; gap: 4px; }
+.bookbox p { margin: 0; }
+.bookbox .mono { color: var(--both); }
+
+.t-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+.t-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+details.hist summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.hist ol { margin: 8px 0 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+details.hist li { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
+details.hist li .mono { color: var(--muted); font-size: 10.5px; padding-top: 2px; }
+details.hist .who-agent { color: var(--agent); }
+
+.privcard { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px dashed var(--line); border-radius: 14px; background: var(--surface); }
+.privcard .txt { flex: 1; }
+.privcard .txt small { display: block; color: var(--muted); font-size: 12.5px; }
+.privcard.done .txt span { text-decoration: line-through; color: var(--muted); }
+
+.empty { border: 1px dashed var(--line); border-radius: 16px; padding: 22px; display: grid; gap: 10px; justify-items: start; }
+.empty p { margin: 0; color: var(--muted); max-width: 60ch; }
+.empty .big { font: italic 500 24px/1.2 var(--font-display); color: var(--ink); }
+
+.done-list { display: grid; gap: 6px; }
+.done-list h2 { font: italic 500 22px/1.1 var(--font-display); margin: 8px 0 4px; }
+.done-item { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
+.done-item .tick { width: 18px; height: 18px; border-radius: 50%; background: var(--both); color: var(--bg); display: grid; place-items: center; font-size: 11px; flex: none; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(20px);
+  background: var(--ink); color: var(--bg); padding: 11px 16px; border-radius: 12px; font-size: 14px;
+  display: flex; gap: 14px; align-items: center; opacity: 0; pointer-events: none; transition: .25s; max-width: calc(100% - 32px);
+}
+.toast.show { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+.toast button { background: none; border: 0; color: var(--blush); font-weight: 700; text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---- app additions ---- */
+.me-chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.me-chip .dot { width: 10px; height: 10px; border-radius: 50%; }
+.c-blue.dot, .dot.c-blue { background: var(--blue); }
+.c-orange.dot, .dot.c-orange { background: var(--orange); }
+.gate { max-width: 460px; margin: 6vh auto 0; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 24px; display: grid; gap: 14px; }
+.gate h1 { font: italic 500 30px/1.1 var(--font-display); margin: 0; }
+.gate p { margin: 0; color: var(--muted); }
+.field { display: grid; gap: 6px; }
+.field label { font-size: 13px; color: var(--muted); }
+.field input { border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; background: var(--bg); }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.swatches { display: flex; gap: 10px; }
+.swatch { border: 2px solid transparent; border-radius: 12px; padding: 10px 14px; color: #fff; font-weight: 600; display: grid; gap: 2px; text-align: left; min-width: 150px; }
+.swatch small { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .85; font-weight: 400; }
+.swatch.c-blue { background: #0e6f8d; }
+.swatch.c-orange { background: #c4532c; }
+.swatch[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 3px var(--bg) inset; }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.err { color: var(--changed); font-size: 13.5px; margin: 0; min-height: 1em; }
+.invite { border: 1px dashed var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 8px; background: var(--surface); }
+.invite p { margin: 0; }
+.invite code { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); padding: 3px 7px; border-radius: 6px; word-break: break-all; }
+.opt a.src { font-size: 13px; color: var(--muted); }
+.foot { color: var(--muted); font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; }
+.foot input { border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; background: var(--surface); width: 180px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button type="button" id="toastBtn" hidden>Undo</button></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+(() => {
+'use strict';
+
+const SUPABASE_URL = 'https://dmtgdhjcpjiqcrwfqscl.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRtdGdkaGpjcGppcWNyd2Zxc2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyOTkxMTEsImV4cCI6MjExMDg3NTExMX0.2JV8Y-sVVOfo_6qoYkiB7qFKfU8M4uuqria19A1bexA';
+if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+  document.getElementById('root').innerHTML = '<div class="wrap"><p class="mode" role="alert">Ampersand could not load. Check your connection and reload the page.</p></div>';
+  return;
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true, detectSessionInUrl: true } });
+
+/* ---------- constants & helpers ---------- */
+const PROJECTS = [
+  { id: 'all', name: 'Everything', cls: 'b-all' },
+  { id: 'home', name: 'Home', cls: 'b-home', c: 'var(--ocean)' },
+  { id: 'money', name: 'Money', cls: 'b-money', c: 'var(--sage)' },
+  { id: 'kids', name: 'Kids', cls: 'b-kids', c: 'var(--astronaut)' },
+  { id: 'weekend', name: 'Weekend', cls: 'b-weekend', c: 'var(--brown)' },
+  { id: 'us', name: 'Us', cls: 'b-us', c: 'var(--plum)' },
+  { id: 'mine', name: 'Just mine', cls: 'b-mine' }
+];
+const PROJ_IDS = ['home', 'money', 'kids', 'weekend', 'us'];
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAYNAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const pad = n => String(n).padStart(2, '0');
+const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseDay = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const fmtDay = s => { const d = parseDay(s); return d ? `${DOW[d.getDay()]} ${MON[d.getMonth()]} ${d.getDate()}` : '—'; };
+const fmtTime = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) return ''; let h = +m[1]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${m[2]} ${ap}`; };
+const fmtWindow = o => `${fmtTime(o.start)}–${fmtTime(o.end)}`;
+const money = c => '$' + (Math.round(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtStamp = ms => { const d = new Date(ms); return `${MON[d.getMonth()]} ${d.getDate()} ${fmtTime(pad(d.getHours()) + ':' + pad(d.getMinutes()))}`; };
+const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const msOf = ts => ts ? new Date(ts).getTime() : 0;
+const oid = () => 'o' + Math.random().toString(36).slice(2, 10);
+
+/* Must match public.terms_hash() in the database. A yes is bound to exactly these terms. */
+const termsHash = o => [o.vendor, o.date, o.start, o.end, o.totalCents, o.includes || ''].join('|');
+const priceJump = c => c + Math.max(2000, Math.round(c * 0.47 / 1000) * 1000);
+
+/* ---------- state ---------- */
+const state = {
+  screen: 'loading', session: null, uid: null,
+  household: null, members: [], tasks: [], approvals: [], priv: [],
+  filter: 'all', loadErrs: {}, lastLoadToast: 0, agentOn: null, checking: new Set(), fresh: new Set(), prevAgreed: null, err: ''
+};
+let channel = null;
+
+const me = () => state.members.find(m => m.user_id === state.uid) || null;
+const partner = () => state.members.find(m => m.user_id !== state.uid) || null;
+const nameOf = uid => { const m = state.members.find(x => x.user_id === uid); return m ? m.display_name : 'Someone'; };
+const colorOf = uid => { const m = state.members.find(x => x.user_id === uid); return m ? m.color : 'blue'; };
+const getTask = id => state.tasks.find(t => t.id === id);
+
+/* ---------- data ---------- */
+async function loadMembership() {
+  const { data, error } = await sb.from('members').select('household_id, user_id, display_name, color').eq('user_id', state.uid).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+async function fetchTable(name) {
+  const hh = state.household && state.household.id;
+  if (!hh && name !== 'private_items') return;
+  let q;
+  if (name === 'tasks') q = sb.from('tasks').select('*').eq('household_id', hh).order('created_at', { ascending: true });
+  else if (name === 'approvals') q = sb.from('approvals').select('*').eq('household_id', hh);
+  else if (name === 'members') q = sb.from('members').select('household_id, user_id, display_name, color').eq('household_id', hh);
+  else if (name === 'private_items') q = sb.from('private_items').select('*').eq('user_id', state.uid).order('created_at', { ascending: true });
+  else if (name === 'households') q = sb.from('households').select('*').eq('id', hh).single();
+  const { data, error } = await q;
+  if (error) {
+    console.warn(name, error);
+    state.loadErrs[name] = true;
+    const now = Date.now();
+    if (state.screen === 'app' && now - state.lastLoadToast > 30000) {
+      state.lastLoadToast = now;
+      toast("Couldn't refresh from the server. You may be seeing older data; it will retry when you come back to this tab.");
+    }
+    return;
+  }
+  delete state.loadErrs[name];
+  if (name === 'tasks') state.tasks = data;
+  else if (name === 'approvals') state.approvals = data;
+  else if (name === 'members') state.members = data;
+  else if (name === 'private_items') state.priv = data;
+  else if (name === 'households') state.household = data;
+}
+const pending = {};
+function refetchSoon(name) {
+  clearTimeout(pending[name]);
+  pending[name] = setTimeout(async () => { await fetchTable(name); render(); }, 120);
+}
+async function loadAll() {
+  await Promise.all(['households', 'members', 'tasks', 'approvals', 'private_items'].map(fetchTable));
+}
+function subscribe() {
+  if (channel) sb.removeChannel(channel);
+  const hh = state.household.id;
+  channel = sb.channel('household-' + hh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `household_id=eq.${hh}` }, () => refetchSoon('tasks'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'approvals', filter: `household_id=eq.${hh}` }, () => refetchSoon('approvals'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `household_id=eq.${hh}` }, () => refetchSoon('members'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'private_items', filter: `user_id=eq.${state.uid}` }, () => refetchSoon('private_items'))
+    .subscribe();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.screen === 'app') loadAll().then(render); });
+
+/* ---------- agent ---------- */
+async function agent(action, payload) {
+  const d = new Date();
+  const { data, error } = await sb.functions.invoke('agent', { body: Object.assign({ action, today: isoDay(d), weekday: DAYNAMES[d.getDay()] }, payload || {}) });
+  if (error) {
+    let body = null;
+    try { body = error.context && typeof error.context.json === 'function' ? await error.context.json() : null; } catch (e) {}
+    const code = body && body.error;
+    if (code === 'agent_not_configured') { state.agentOn = false; render(); }
+    const err = new Error((body && (body.detail || body.error)) || error.message);
+    err.code = code;
+    throw err;
+  }
+  return data;
+}
+
+/* ---------- derived state ---------- */
+function approvalsFor(taskId) {
+  const out = {};
+  for (const a of state.approvals) if (a.task_id === taskId) out[a.user_id] = a;
+  return out;
+}
+function validYes(t, ap, uid) {
+  const a = uid && ap[uid];
+  if (!a || !a.yes_option_id) return null;
+  const o = (t.options || []).find(x => x.id === a.yes_option_id);
+  return o && termsHash(o) === a.yes_hash ? o : null;
+}
+function taskState(t) {
+  const mine = state.uid, p = partner();
+  if (t.status === 'done') return { key: 'done', label: 'Done', rank: 9 };
+  if (t.status === 'booked') return { key: 'booked', label: 'Booked', rank: 6 };
+  if (t.status === 'researching' && Date.now() - msOf(t.research_at) < 240000) return { key: 'agent', label: 'Agent researching', rank: 3 };
+  const opts = t.options || [];
+  const ap = approvalsFor(t.id);
+  const a = validYes(t, ap, mine), b = p ? validYes(t, ap, p.user_id) : null;
+  if (a && b && a.id === b.id) {
+    if (state.checking.has(t.id)) return { key: 'agent', label: 'Agent checking live terms', rank: 2, option: a, checking: true };
+    return { key: 'agreed', label: 'Both said yes', rank: 1, option: a };
+  }
+  if (!opts.length) {
+    const label = !t.assignee ? 'Open' : (t.assignee === mine ? 'Yours' : `${nameOf(t.assignee)}'s`);
+    return { key: 'open', label, rank: 5 };
+  }
+  if (a && b) return { key: 'split', label: 'You picked different ones', rank: 0 };
+  if (!a) return { key: 'needs', label: 'Needs you', rank: 0 };
+  return { key: 'waiting', label: p ? `Waiting on ${p.display_name}` : 'Waiting for your partner to join', rank: 4 };
+}
+
+/* ---------- rendering: gates ---------- */
+const brand = `<div class="brand"><span class="amp" aria-hidden="true">&amp;</span><span class="word">Ampersand</span></div>`;
+
+function renderSignin() {
+  const sent = state.sentTo;
+  $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header>
+  <section class="gate" aria-labelledby="gt">
+    <h1 id="gt">${sent ? 'Check your email' : 'Sign in'}</h1>
+    ${sent ? `<p>We sent a sign-in link to <strong>${esc(sent)}</strong>. Open it on this device and you'll land back here, signed in.</p>
+      <div class="field"><label for="code">Or type the code from the email, if it has one</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></div>
+      <div class="row"><button type="button" class="btn" data-act="verify">Sign in with code</button><button type="button" class="btn link" data-act="resend">Use a different email</button></div>`
+    : `<p>One shared list for the two of you. An agent does the research; nothing is booked until you both say yes.</p>
+      <div class="field"><label for="email">Your email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+      <button type="button" class="btn" data-act="sendlink">Email me a sign-in link</button>`}
+    <p class="err" id="err" role="alert">${esc(state.err)}</p>
+  </section></div>`;
+}
+
+function renderSetup() {
+  let join = '';
+  try { join = localStorage.getItem('amp.join') || ''; } catch (e) {}
+  const pick = state.pickColor || 'blue';
+  $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}<button type="button" class="btn link" data-act="signout">Sign out</button></header>
+  <section class="gate" aria-labelledby="st">
+    <h1 id="st">${join ? 'Join your household' : 'Set up your household'}</h1>
+    <div class="field"><label for="dname">Your first name</label><input id="dname" autocomplete="given-name" maxlength="40"></div>
+    ${join ? `
+      <div class="field"><label for="jcode">Invite code</label><input id="jcode" value="${esc(join)}" maxlength="12" style="text-transform:uppercase"></div>
+      <button type="button" class="btn" data-act="join">Join</button>
+      <div class="divider">or</div>
+      <button type="button" class="btn link" data-act="forgetjoin">Start a new household instead</button>`
+    : `
+      <div class="field"><span class="mono" id="colLbl">Your colour</span>
+        <div class="swatches" role="group" aria-labelledby="colLbl">
+          <button type="button" class="swatch c-blue" data-act="pickcolor" data-c="blue" aria-pressed="${pick === 'blue'}"><small>#0E6F8D</small>Enchanted Blue</button>
+          <button type="button" class="swatch c-orange" data-act="pickcolor" data-c="orange" aria-pressed="${pick === 'orange'}"><small>#C4532C</small>Raucous Orange</button>
+        </div></div>
+      <button type="button" class="btn" data-act="create">Start our household</button>
+      <div class="divider">or</div>
+      <div class="field"><label for="jcode">Have an invite code from your partner?</label><input id="jcode" maxlength="12" style="text-transform:uppercase" placeholder="e.g. E94B0C8B"></div>
+      <button type="button" class="btn ghost" data-act="join">Join with code</button>`}
+    <p class="err" id="err" role="alert">${esc(state.err)}</p>
+  </section></div>`;
+}
+
+/* ---------- rendering: app ---------- */
+function shell() {
+  if ($('#app')) return;
+  $('#root').innerHTML = `<div class="wrap" id="app">
+  <header class="top">${brand}
+    <div class="who"><span class="me-chip" id="meChip"></span><button type="button" class="btn link" data-act="signout">Sign out</button></div>
+  </header>
+  <div class="mode" id="mode" aria-live="polite"></div>
+  <div id="inviteSlot"></div>
+  <section class="capture" aria-labelledby="capLabel">
+    <label class="lead" id="capLabel" for="say">What's on your mind?</label>
+    <div class="cap-row">
+      <button type="button" class="mic" id="mic" aria-pressed="false" aria-label="Speak a task" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <textarea id="say" rows="2" placeholder="Say it the way you'd say it out loud. Several things at once is fine."></textarea>
+      <button type="button" class="btn" id="add" data-act="capture">Add</button>
+    </div>
+    <div class="cap-foot">
+      <div class="chips" aria-label="Examples">
+        <button type="button" class="chip" data-act="chip">gutters need doing before december, keep it under 200</button>
+        <button type="button" class="chip" data-act="chip">date night next saturday, something with live music</button>
+        <button type="button" class="chip" data-act="chip">renew the car registration by dec 15 and we need a new air filter</button>
+      </div>
+      <label class="priv"><input type="checkbox" id="priv"> Keep it private (only you see it, the agent never reads it)</label>
+    </div>
+    <div class="agent-line" id="capStatus" aria-live="polite"></div>
+  </section>
+  <div class="summary" id="summary" aria-live="polite"></div>
+  <div class="main">
+    <nav class="bands" id="bands" aria-label="Projects"></nav>
+    <section class="list" id="list" aria-label="Tasks"></section>
+  </div>
+  <footer class="foot" id="foot"></footer>
+</div>`;
+  setupVoice();
+  $('#say').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); capture(); } });
+}
+
+function renderHeader() {
+  const m = me();
+  $('#meChip').innerHTML = m ? `<span class="dot c-${m.color}"></span>${esc(m.display_name)}` : '';
+  const p = partner();
+  const agent = state.agentOn === false
+    ? '<span class="mono">agent not set up yet</span>'
+    : state.agentOn ? '<span class="mono">agent ready</span>' : '';
+  const stale = Object.keys(state.loadErrs).length ? ' · <strong>offline or out of date: some data failed to load</strong>' : '';
+  $('#mode').innerHTML = `${p ? `Shared with ${esc(p.display_name)} · changes sync live` : 'Just you so far'}${agent ? ' · ' + agent : ''}${stale}`;
+  const slot = $('#inviteSlot');
+  if (!p && state.household) {
+    const link = `${location.origin}/?join=${state.household.invite_code}`;
+    slot.innerHTML = `<div class="invite"><p><strong>Invite your partner.</strong> Nothing can be booked until you're both here.</p>
+      <p>Send this link: <code id="invLink">${esc(link)}</code></p>
+      <p class="note">Or have them sign in and enter code <code>${esc(state.household.invite_code)}</code>.</p>
+      <div class="row"><button type="button" class="btn small" data-act="copyinvite">Copy link</button></div></div>`;
+  } else slot.innerHTML = '';
+  if (state.agentOn === false) {
+    slot.innerHTML += `<div class="invite"><p><strong>The agent isn't switched on yet.</strong> Tasks are added as typed until an Anthropic API key is saved as <code>ANTHROPIC_API_KEY</code> in Supabase → Edge Functions → Secrets.</p></div>`;
+  }
+  $('#foot').innerHTML = state.household ? `<label for="homeBase">Home base for the agent's searches</label>
+    <input id="homeBase" value="${esc(state.household.home_base)}" maxlength="60"><button type="button" class="btn link" data-act="savebase">Save</button>` : '';
+}
+
+function renderSummary() {
+  const st = state.tasks.filter(t => t.status !== 'done').map(taskState);
+  const n = k => st.filter(s => s.key === k).length;
+  const needs = n('needs') + n('split'), agreed = n('agreed'), agent = n('agent'), waiting = n('waiting');
+  const p = partner();
+  const parts = [`<span class="pill needs"><b>${needs}</b> need you</span>`];
+  if (agreed) parts.push(`<span class="pill agreed"><b>${agreed}</b> ready to book</span>`);
+  if (agent) parts.push(`<span class="pill agent"><b>${agent}</b> agent working</span>`);
+  if (waiting) parts.push(`<span class="pill"><b>${waiting}</b> waiting on ${esc(p ? p.display_name : 'your partner')}</span>`);
+  $('#summary').innerHTML = parts.join('');
+}
+
+function renderBands() {
+  const open = state.tasks.filter(t => t.status !== 'done');
+  $('#bands').innerHTML = PROJECTS.map(p => {
+    let count, needs = 0;
+    if (p.id === 'mine') count = state.priv.filter(x => !x.done).length;
+    else {
+      const list = p.id === 'all' ? open : open.filter(t => t.project === p.id);
+      count = list.length + (p.id === 'all' ? state.priv.filter(x => !x.done).length : 0);
+      needs = list.map(taskState).filter(s => s.key === 'needs' || s.key === 'split').length;
+    }
+    const label = p.id === 'mine' ? `${count} private` : `${count} open${needs ? ` · ${needs} need you` : ''}`;
+    return `<button type="button" class="band ${p.cls}" data-act="filter" data-f="${p.id}" aria-pressed="${state.filter === p.id}"><span class="mono">${esc(label)}</span><span class="nm">${esc(p.name)}</span></button>`;
+  }).join('');
+}
+
+function voteChip(uid, o, ap, t) {
+  const yes = validYes(t, ap, uid);
+  const isYes = yes && yes.id === o.id;
+  const passed = ap[uid] && (ap[uid].passed || []).includes(o.id);
+  const word = isYes ? 'yes' : passed ? 'passed' : 'hasn’t picked';
+  return `<span class="vote c-${colorOf(uid)} ${isYes ? 'yes' : ''}"><span class="dot"></span>${esc(nameOf(uid))} ${word}</span>`;
+}
+
+function renderOption(t, o, ap) {
+  const uid = state.uid, p = partner();
+  const mineYes = validYes(t, ap, uid);
+  const isMine = mineYes && mineYes.id === o.id;
+  const passed = ap[uid] && (ap[uid].passed || []).includes(o.id);
+  const staleFor = state.members.filter(m => ap[m.user_id] && ap[m.user_id].yes_option_id === o.id && ap[m.user_id].yes_hash !== termsHash(o)).map(m => m.display_name);
+  const tag = o.requoted ? '<span class="tag re">Re-quoted at booking</span>'
+    : o.source === 'example' ? '<span class="tag">Example</span>'
+    : o.priceIsEstimate ? '<span class="tag">Price estimated · re-checked at booking</span>'
+    : '<span class="tag">Listed price · re-checked at booking</span>';
+  const actions = isMine
+    ? `<button type="button" class="btn ghost small" data-act="unyes" data-task="${t.id}" data-opt="${esc(o.id)}">Take back my yes</button>`
+    : `<button type="button" class="btn small" data-act="yes" data-task="${t.id}" data-opt="${esc(o.id)}">Yes to this</button>` +
+      (passed ? `<button type="button" class="btn link" data-act="unpass" data-task="${t.id}" data-opt="${esc(o.id)}">Undo pass</button>`
+              : `<button type="button" class="btn ghost small" data-act="pass" data-task="${t.id}" data-opt="${esc(o.id)}">Pass</button>`);
+  const was = o.requoted && o.was ? `<p class="stale">Was ${esc(fmtDay(o.was.date))}, ${esc(money(o.was.totalCents))}. You both need to say yes again.</p>` : '';
+  return `<li class="opt ${isMine ? 'mine' : ''} ${passed && !isMine ? 'passed' : ''}" style="--me: var(--${me() ? me().color : 'blue'})">
+    <div class="opt-head"><span class="vendor">${esc(o.vendor)}</span>${tag}</div>
+    <p class="opt-title">${esc(o.title)}</p>
+    ${o.detail ? `<p class="opt-detail">${esc(o.detail)}</p>` : ''}
+    <div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in</div>
+    ${o.includes ? `<p class="opt-detail">Includes: ${esc(o.includes)}</p>` : ''}
+    ${o.url && /^https:\/\//.test(o.url) ? `<a class="src" href="${esc(o.url)}" target="_blank" rel="noopener noreferrer">Where the agent found this</a>` : ''}
+    ${was}
+    ${staleFor.length ? `<p class="stale">These terms changed after ${esc(staleFor.join(' and '))} said yes, so that yes no longer counts.</p>` : ''}
+    <div class="opt-foot"><div class="votes">${voteChip(uid, o, ap, t)}${p ? voteChip(p.user_id, o, ap, t) : ''}</div><div class="opt-actions">${actions}</div></div>
+  </li>`;
+}
+
+function renderAgreed(t, s) {
+  const o = s.option, mm = me(), p = partner();
+  const nd = addDays(parseDay(o.date), 1);
+  return `<div class="agreebox ${state.fresh.has(t.id) ? 'fresh' : ''}">
+    <div class="join" aria-hidden="true"><span class="sw c-blue"></span><span class="sw c-orange"></span><span class="amp-mini">&amp;</span></div>
+    <p><strong>${esc(mm.display_name)} and ${esc(p.display_name)} both said yes</strong> to ${esc(o.vendor)}: ${esc(fmtDay(o.date))}, ${esc(fmtWindow(o))}, ${esc(money(o.totalCents))} all-in.</p>
+    <p class="small">Before booking, the server re-checks the live date, time, vendor, what's included and the all-in price. If any of it differs from what you both approved, it won't book and will ask you both again. Payment is capped at ${esc(money(o.totalCents))}.</p>
+    ${s.checking ? `<div class="agent-line busy">re-checking live terms with the vendor…</div>` : `
+    <div class="book-row">
+      <label for="sc-${t.id}">Simulate the vendor's live answer (until real vendor connections exist)
+        <select id="sc-${t.id}">
+          <option value="hold">Live terms match what you approved</option>
+          <option value="nextday">Only ${esc(DAYNAMES[nd.getDay()])} is open now</option>
+          <option value="price">Price went up to ${esc(money(priceJump(o.totalCents)))}</option>
+        </select>
+      </label>
+      <button type="button" class="btn" data-act="book" data-task="${t.id}">Book it</button>
+    </div>`}
+  </div>`;
+}
+
+const FIELD_FMT = {
+  vendor: ['Vendor', v => v],
+  date: ['Date', v => fmtDay(v)],
+  start: ['Starts', v => fmtTime(v)],
+  end: ['Ends', v => fmtTime(v)],
+  totalCents: ['All-in price', v => money(v)],
+  includes: ['Includes', v => v || '—']
+};
+function renderVoided(t) {
+  const rows = (t.voided.diffs || []).map(d => {
+    const f = FIELD_FMT[d.field] || [d.field, v => v];
+    return `<tr><td>${esc(f[0])}</td><td class="was">${esc(f[1](d.was))}</td><td class="now">${esc(f[1](d.now))}</td></tr>`;
+  }).join('');
+  return `<div class="voided">
+    <p class="v-title">Didn't book. The terms changed.</p>
+    <div class="diff-wrap"><table class="diff"><thead><tr><th>What</th><th>You both approved</th><th>Live now</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p>Both yeses were cleared. The new terms are in the options below if you still want it.</p>
+  </div>`;
+}
+function renderBooked(t) {
+  const b = t.booking;
+  return `<div class="bookbox">
+    <span class="mono">Booked · ${esc(b.confirmation)}</span>
+    <p>${esc(b.vendor)} · ${esc(fmtDay(b.date))}, ${esc(fmtWindow(b))} · ${esc(money(b.capCents))} all-in</p>
+    <p class="note">Every term matched what you both approved. Payment capped at ${esc(money(b.capCents))}.</p>
+  </div>`;
+}
+
+function renderTask(t) {
+  const s = taskState(t);
+  const proj = PROJECTS.find(p => p.id === t.project) || PROJECTS[5];
+  const ap = approvalsFor(t.id);
+  const overdue = t.due && parseDay(t.due) < todayStart();
+  const who = !t.assignee ? 'Both of you' : nameOf(t.assignee);
+  const meta = [
+    `<span class="mono">${esc(proj.name)}</span>`,
+    `<span class="mono">${esc(who)}</span>`,
+    t.due ? `<span class="mono ${overdue ? 'overdue' : ''}">by ${esc(fmtDay(t.due))}${t.due_reason ? ` · ${esc(t.due_reason)}` : ''}</span>` : '',
+    t.budget_cents ? `<span class="mono">budget ${esc(money(t.budget_cents))}</span>` : ''
+  ].join('');
+  const opts = t.options || [];
+  let body = '';
+  if (s.key === 'agent' && !s.checking) body += `<div class="agent-line busy">searching for real options${t.budget_cents ? ` under ${esc(money(t.budget_cents))}` : ''}…</div>`;
+  if (t.agent_note && s.key !== 'agent' && t.status !== 'booked') body += `<p class="note"><span class="mono">agent</span>${esc(t.agent_note)}</p>`;
+  if (t.voided && t.status !== 'booked') body += renderVoided(t);
+  if (t.status === 'booked' && t.booking) body += renderBooked(t);
+  else if (s.key === 'agreed' || s.checking) body += renderAgreed(t, s);
+  if (opts.length && t.status !== 'booked' && !s.checking) body += `<ul class="opts">${opts.map(o => renderOption(t, o, ap)).join('')}</ul>`;
+  const acts = [];
+  if (!opts.length && s.key !== 'agent' && t.status !== 'booked' && state.agentOn !== false) {
+    acts.push(`<button type="button" class="btn small" data-act="research" data-task="${t.id}">Have the agent find options</button>`);
+  }
+  if (t.status === 'booked' || !opts.length) acts.push(`<button type="button" class="btn ghost small" data-act="done" data-task="${t.id}">Mark done</button>`);
+  const logItems = (t.log || []).slice().reverse().map(l => `<li><span class="mono">${esc(fmtStamp(l.at))}</span><span class="${l.who === 'agent' ? 'who-agent' : ''}">${esc(l.who === 'agent' ? 'Agent' : nameOf(l.who))}: ${esc(l.text)}</span></li>`).join('');
+  const more = [];
+  if (opts.length && state.agentOn !== false && t.status !== 'booked' && s.key !== 'agent') more.push(`<button type="button" class="btn link" data-act="research" data-task="${t.id}">Get fresh options</button>`);
+  if (opts.length && t.status !== 'booked') more.push(`<button type="button" class="btn link" data-act="done" data-task="${t.id}">Mark done without booking</button>`);
+  more.push(`<button type="button" class="btn link" data-act="remove" data-task="${t.id}">Remove task</button>`);
+  return `<article class="task k-${s.key}" data-id="${t.id}" style="--c:${proj.c || 'var(--sand)'}">
+    <div class="t-top"><div><div class="t-meta">${meta}</div><h3>${esc(t.title)}</h3></div><span class="status ${s.key}">${esc(s.label)}</span></div>
+    ${body}
+    <div class="t-foot"><div class="t-actions">${acts.join('')}</div>
+      <details class="hist"><summary>History and more</summary><ol>${logItems}</ol><div class="t-actions" style="margin-top:8px">${more.join('')}</div></details>
+    </div>
+  </article>`;
+}
+
+function renderPriv(p) {
+  return `<div class="privcard ${p.done ? 'done' : ''}">
+    <input type="checkbox" id="pv-${p.id}" data-act="privdone" data-id="${p.id}" ${p.done ? 'checked' : ''} aria-label="Done">
+    <label class="txt" for="pv-${p.id}"><span>${esc(p.title)}</span><small>Only you can see this. The agent never reads it.</small></label>
+    <button type="button" class="btn link" data-act="privremove" data-id="${p.id}">Remove</button>
+  </div>`;
+}
+
+function renderList() {
+  const f = state.filter;
+  const proj = PROJECTS.find(p => p.id === f);
+  let html = `<div class="list-head"><h2>${esc(proj.name)}</h2></div>`;
+  const open = state.tasks.filter(t => t.status !== 'done' && (f === 'all' || t.project === f));
+  open.sort((a, b) => (taskState(a).rank - taskState(b).rank) || (a.due || '9999').localeCompare(b.due || '9999'));
+  if (f !== 'mine') html += open.map(renderTask).join('');
+  if (f === 'all' || f === 'mine') html += state.priv.filter(p => !p.done || f === 'mine').map(renderPriv).join('');
+  const nothing = (f === 'mine' ? state.priv.length : open.length + (f === 'all' ? state.priv.filter(p => !p.done).length : 0)) === 0;
+  if (nothing) {
+    if (!state.tasks.length && f === 'all') {
+      html += `<div class="empty"><p class="big">Start with one thing on your mind.</p>
+        <p>Say it loosely, several things at once if you like. The agent sorts them into projects, works out deadlines and finds real options. Nothing is booked until you both say yes.</p>
+        <button type="button" class="btn ghost small" data-act="examples">Add three example tasks to try it</button></div>`;
+    } else if (f === 'mine') {
+      html += `<div class="empty"><p>Nothing private yet. Tick "Keep it private" when you add something and only you will see it.</p></div>`;
+    } else html += `<div class="empty"><p>Nothing open here.</p></div>`;
+  }
+  const done = state.tasks.filter(t => t.status === 'done' && (f === 'all' || t.project === f)).sort((a, b) => msOf(b.done_at) - msOf(a.done_at)).slice(0, 6);
+  if (done.length && f !== 'mine') {
+    html += `<div class="done-list"><h2>Done lately</h2>${done.map(t => `<div class="done-item"><span class="tick" aria-hidden="true">✓</span><span>${esc(t.title)}</span><button type="button" class="btn link" data-act="undone" data-task="${t.id}">Reopen</button></div>`).join('')}</div>`;
+  }
+  $('#list').innerHTML = html;
+}
+
+function render() {
+  if (state.screen === 'loading') { $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header><p class="mode">Loading…</p></div>`; return; }
+  if (state.screen === 'signin') { renderSignin(); return; }
+  if (state.screen === 'setup') { renderSetup(); return; }
+  shell();
+  const agreedNow = new Set(state.tasks.filter(t => t.status !== 'done' && taskState(t).key === 'agreed').map(t => t.id));
+  if (state.prevAgreed) for (const id of agreedNow) if (!state.prevAgreed.has(id)) { state.fresh.add(id); setTimeout(() => state.fresh.delete(id), 1500); }
+  state.prevAgreed = agreedNow;
+  const openDetails = new Set([...document.querySelectorAll('details.hist[open]')].map(d => d.closest('.task') && d.closest('.task').dataset.id));
+  const selects = {}; document.querySelectorAll('.book-row select').forEach(s => { selects[s.id] = s.value; });
+  const baseFocused = document.activeElement && document.activeElement.id === 'homeBase';
+  if (!baseFocused) renderHeader();
+  renderSummary(); renderBands(); renderList();
+  document.querySelectorAll('details.hist').forEach(d => { const c = d.closest('.task'); if (c && openDetails.has(c.dataset.id)) d.open = true; });
+  for (const id in selects) { const s = document.getElementById(id); if (s) s.value = selects[id]; }
+}
+
+/* ---------- toast ---------- */
+let toastTimer = null;
+function toast(msg, undo) {
+  $('#toastMsg').textContent = msg;
+  const btn = $('#toastBtn');
+  btn.hidden = !undo;
+  btn.onclick = undo ? () => { undo(); $('#toast').classList.remove('show'); } : null;
+  $('#toast').classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('#toast').classList.remove('show'), undo ? 6000 : 4500);
+}
+const friendly = e => (e && (e.message || e.error_description || e.msg)) || 'Something went wrong. Try again.';
+
+/* ---------- writes ---------- */
+const logEntry = text => ({ at: Date.now(), who: state.uid, text });
+async function patchTask(id, patch) {
+  const i = state.tasks.findIndex(t => t.id === id);
+  if (i >= 0) { state.tasks[i] = Object.assign({}, state.tasks[i], patch); render(); }
+  const { error } = await sb.from('tasks').update(patch).eq('id', id);
+  if (error) { toast(friendly(error)); refetchSoon('tasks'); throw error; }
+}
+async function setMyApproval(taskId, mutate) {
+  const cur = state.approvals.find(a => a.task_id === taskId && a.user_id === state.uid)
+    || { task_id: taskId, user_id: state.uid, household_id: state.household.id, yes_option_id: null, yes_hash: null, passed: [] };
+  const next = Object.assign({}, cur, { passed: (cur.passed || []).slice() });
+  mutate(next);
+  const row = { task_id: taskId, user_id: state.uid, household_id: state.household.id, yes_option_id: next.yes_option_id, yes_hash: next.yes_hash, passed: next.passed, updated_at: new Date().toISOString() };
+  const i = state.approvals.findIndex(a => a.task_id === taskId && a.user_id === state.uid);
+  if (i >= 0) state.approvals[i] = row; else state.approvals.push(row);
+  render();
+  const { error } = await sb.from('approvals').upsert(row, { onConflict: 'task_id,user_id' });
+  if (error) { toast(friendly(error)); refetchSoon('approvals'); }
+}
+
+function setCapStatus(text, busy) { const el = $('#capStatus'); if (!el) return; el.textContent = text; el.classList.toggle('busy', !!busy); }
+function fallbackParse(text) {
+  const s = text.toLowerCase();
+  const pick = [['home', /gutter|yard|lawn|repair|clean|fix|house|hvac|plumb|filter|garage|paint/], ['money', /bill|tax|insur|pay|budget|registration|bank|renew/], ['kids', /kid|school|dentist|pediatric|soccer|practice|boys|daycare/], ['weekend', /weekend|trip|park|movie|camp|visit/]].find(([, re]) => re.test(s));
+  return { title: text.trim().replace(/^./, c => c.toUpperCase()).slice(0, 120), project: pick ? pick[0] : 'us', assignee: null, due: null, due_reason: null, research: false, budget_cents: null };
+}
+
+async function capture() {
+  const box = $('#say');
+  const text = box.value.trim();
+  if (!text) return;
+  stopVoice();
+  box.value = '';
+  if ($('#priv').checked) {
+    const { error } = await sb.from('private_items').insert({ title: text.slice(0, 300) });
+    if (error) { box.value = text; toast(friendly(error)); } else { setCapStatus('Saved to your private list.'); refetchSoon('private_items'); }
+    return;
+  }
+  $('#add').disabled = true;
+  let parsed = null, note = '';
+  if (state.agentOn !== false) {
+    setCapStatus('sorting that into tasks…', true);
+    try { parsed = (await agent('parse', { text })).tasks; }
+    catch (e) { note = e.code === 'agent_not_configured' ? 'Added as typed. The agent is not set up yet.' : 'Added as typed. The agent could not sort it this time.'; }
+  }
+  if (!parsed || !parsed.length) parsed = [fallbackParse(text)];
+  const rows = parsed.map(p => ({
+    household_id: state.household.id, title: p.title, project: PROJ_IDS.includes(p.project) ? p.project : 'us',
+    assignee: p.assignee || null, due: p.due || null, due_reason: p.due_reason || null, research: !!p.research,
+    budget_cents: p.budget_cents || null, log: [logEntry(`Added: "${text.slice(0, 200)}"`)]
+  }));
+  const { data, error } = await sb.from('tasks').insert(rows).select();
+  $('#add').disabled = false;
+  if (error) { box.value = text; setCapStatus(''); toast(friendly(error)); return; }
+  state.tasks = state.tasks.concat(data);
+  render();
+  setCapStatus(note || `added ${data.length}: ${data.map(t => `${t.title} → ${(PROJECTS.find(x => x.id === t.project) || {}).name}`).join(' · ')}`);
+  for (const t of data) if (t.research && state.agentOn !== false) research(t.id);
+}
+
+async function research(taskId) {
+  const t = getTask(taskId);
+  if (!t) return;
+  const i = state.tasks.indexOf(t);
+  state.tasks[i] = Object.assign({}, t, { status: 'researching', research_at: new Date().toISOString() });
+  render();
+  try { await agent('research', { taskId }); }
+  catch (e) { toast(e.code === 'agent_not_configured' ? "The agent isn't set up yet." : "The agent couldn't finish that one. Try again in a minute."); }
+  refetchSoon('tasks');
+}
+
+async function book(taskId, scenario) {
+  const s = taskState(getTask(taskId));
+  if (s.key !== 'agreed') { toast('You both need to say yes to the same option first.'); return; }
+  state.checking.add(taskId); render();
+  await sleep(1200);
+  const { data, error } = await sb.rpc('book_task', { p_task: taskId, p_scenario: scenario });
+  state.checking.delete(taskId);
+  await Promise.all([fetchTable('tasks'), fetchTable('approvals')]);
+  render();
+  if (error) { toast(friendly(error)); return; }
+  toast(data && data.booked ? 'Booked. The live terms matched what you both approved.' : "Didn't book. The terms changed, so you both need to say yes again.");
+}
+
+async function markDone(taskId) {
+  const t = getTask(taskId);
+  if (!t) return;
+  const prev = t.status;
+  await patchTask(taskId, { status: 'done', prev_status: prev, done_at: new Date().toISOString(), log: (t.log || []).concat(logEntry('Marked done.')) }).catch(() => {});
+  toast(`Done: ${t.title}`, () => reopen(taskId));
+}
+async function reopen(taskId) {
+  const t = getTask(taskId);
+  if (!t) return;
+  const back = t.prev_status === 'booked' && t.booking ? 'booked' : 'open';
+  await patchTask(taskId, { status: back, done_at: null, log: (t.log || []).concat(logEntry('Reopened.')) }).catch(() => {});
+}
+async function removeTask(taskId) {
+  const t = getTask(taskId);
+  if (!t) return;
+  state.tasks = state.tasks.filter(x => x.id !== taskId); render();
+  const { error } = await sb.from('tasks').delete().eq('id', taskId);
+  if (error) { toast(friendly(error)); refetchSoon('tasks'); } else toast(`Removed: ${t.title}`);
+}
+
+async function addExamples() {
+  const today = todayStart();
+  const sat = addDays(today, ((6 - today.getDay() + 7) % 7) || 7);
+  const S = d => isoDay(d);
+  const g = [
+    { id: oid(), vendor: 'Independent gutter crew, Allen area', title: 'Clean all gutters and downspouts', detail: 'Lowest all-in price of the three, and it fits the Saturday you both have open.', date: S(sat), start: '09:00', end: '11:00', totalCents: 15000, includes: 'Gutters, downspouts, debris haul-away', source: 'example' },
+    { id: oid(), vendor: 'Gutter and roofing company, McKinney', title: 'Cleaning plus a gutter-guard inspection', detail: 'Adds a look at the guards and fascia while they are up there.', date: S(addDays(sat, -1)), start: '13:00', end: '15:30', totalCents: 18500, includes: 'Cleaning, downspout flush, guard inspection', source: 'example' },
+    { id: oid(), vendor: 'Handyman service, Plano', title: 'Gutter cleaning, Sunday slot', detail: 'Sunday works if Saturday fills up; slightly higher price.', date: S(addDays(sat, 1)), start: '10:00', end: '12:00', totalCents: 16500, includes: 'Gutters, downspouts', source: 'example' }
+  ];
+  const d = [
+    { id: oid(), vendor: 'Tasting-menu restaurant, Bishop Arts (Dallas)', title: "Chef's counter, seven courses", detail: 'Quiet and special; the priciest of the three.', date: S(sat), start: '19:00', end: '21:30', totalCents: 21000, includes: 'Dinner for two, tax and tip', source: 'example' },
+    { id: oid(), vendor: 'Music venue with a kitchen, Deep Ellum', title: 'Dinner and a live set', detail: 'Matches the live-music ask and stays under $150 all-in.', date: S(sat), start: '19:30', end: '22:30', totalCents: 14000, includes: 'Two tickets, dinner for two, fees', source: 'example' },
+    { id: oid(), vendor: 'Cooking school, Plano', title: 'Couples pasta class', detail: 'Closer to home and something you make together.', date: S(sat), start: '18:00', end: '20:30', totalCents: 17000, includes: 'Class for two, dinner, wine pairing', source: 'example' }
+  ];
+  const hh = state.household.id;
+  const rows = [
+    { household_id: hh, example: true, title: 'Get the gutters cleaned', project: 'home', due: S(addDays(sat, 2)), due_reason: 'after the leaves drop', budget_cents: 20000, options: g, agent_note: 'Example options. Real ones come from the agent searching near your home base.', log: [logEntry('Added example task.')] },
+    { household_id: hh, example: true, title: 'Plan a date night for Saturday', project: 'us', due: S(sat), due_reason: 'this Saturday', options: d, agent_note: 'Example options. Say yes to one, then have your partner do the same.', log: [logEntry('Added example task.')] },
+    { household_id: hh, example: true, title: 'Find a pediatric dentist for the kids', project: 'kids', due: S(addDays(today, 20)), due_reason: 'before the holiday break', research: true, log: [logEntry('Added example task.')] }
+  ];
+  const full = rows.map(r => Object.assign({ budget_cents: null, research: false, options: [], agent_note: null }, r));
+  const { data, error } = await sb.from('tasks').insert(full).select();
+  if (error) { toast(friendly(error)); return; }
+  state.tasks = state.tasks.concat(data);
+  const gut = data.find(x => x.title.startsWith('Get the gutters'));
+  if (gut) await setMyApproval(gut.id, a => { a.yes_option_id = g[0].id; a.yes_hash = termsHash(g[0]); });
+  render();
+  toast('Added three examples. You already said yes to the $150 Saturday gutter crew.');
+}
+
+/* ---------- voice (Web Speech API) ---------- */
+let rec = null, listening = false, voiceBase = '', voiceFinal = '';
+function setupVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const mic = $('#mic');
+  mic.hidden = false;
+  rec = new SR();
+  rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+  rec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) voiceFinal += r[0].transcript + ' '; else interim += r[0].transcript;
+    }
+    $('#say').value = voiceBase + voiceFinal + interim;
+  };
+  rec.onstart = () => { listening = true; mic.setAttribute('aria-pressed', 'true'); mic.setAttribute('aria-label', 'Stop listening'); setCapStatus('listening… tap the mic again when you are done', true); };
+  rec.onend = () => { listening = false; mic.setAttribute('aria-pressed', 'false'); mic.setAttribute('aria-label', 'Speak a task'); setCapStatus(''); };
+  rec.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Typing still works.'); };
+  mic.addEventListener('click', () => {
+    if (listening) { rec.stop(); return; }
+    voiceBase = $('#say').value.trim() ? $('#say').value.trim() + ' ' : '';
+    voiceFinal = '';
+    try { rec.start(); } catch (e) {}
+  });
+}
+function stopVoice() { if (rec && listening) try { rec.stop(); } catch (e) {} }
+
+/* ---------- events ---------- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]');
+  if (!b || b.disabled) return;
+  const act = b.dataset.act, id = b.dataset.task, opt = b.dataset.opt;
+  const setErr = m => { state.err = m; const el = $('#err'); if (el) el.textContent = m; };
+  try {
+    if (act === 'sendlink') {
+      const email = ($('#email').value || '').trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Enter a valid email address.'); return; }
+      b.disabled = true;
+      const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+      b.disabled = false;
+      if (error) { setErr(friendly(error)); return; }
+      state.sentTo = email; state.err = ''; render(); return;
+    }
+    if (act === 'verify') {
+      const token = ($('#code').value || '').trim();
+      const { error } = await sb.auth.verifyOtp({ email: state.sentTo, token, type: 'email' });
+      if (error) setErr(friendly(error));
+      return;
+    }
+    if (act === 'resend') { state.sentTo = null; state.err = ''; render(); return; }
+    if (act === 'signout') {
+      const { error } = await sb.auth.signOut();
+      if (error) toast("Couldn't sign out. " + friendly(error) + ' Check your connection and try again.');
+      return;
+    }
+    if (act === 'pickcolor') { state.pickColor = b.dataset.c; const n = $('#dname').value; render(); $('#dname').value = n; return; }
+    if (act === 'forgetjoin') { try { localStorage.removeItem('amp.join'); } catch (er) {} const n = $('#dname').value; render(); $('#dname').value = n; return; }
+    if (act === 'create' || act === 'join') {
+      const display = ($('#dname').value || '').trim();
+      if (!display) { setErr('Add your first name.'); return; }
+      b.disabled = true;
+      const res = act === 'create'
+        ? await sb.rpc('create_household', { p_display: display, p_color: state.pickColor || 'blue' })
+        : await sb.rpc('join_household', { p_code: ($('#jcode').value || '').trim(), p_display: display });
+      b.disabled = false;
+      if (res.error) { setErr(friendly(res.error)); return; }
+      try { localStorage.removeItem('amp.join'); } catch (er) {}
+      state.err = '';
+      await enterApp();
+      return;
+    }
+    if (act === 'copyinvite') {
+      const link = $('#invLink').textContent;
+      try { await navigator.clipboard.writeText(link); toast('Invite link copied.'); } catch (er) { toast('Copy didn’t work here. Select the link and copy it.'); }
+      return;
+    }
+    if (act === 'savebase') {
+      const v = ($('#homeBase').value || '').trim();
+      if (!v) return;
+      const { error } = await sb.from('households').update({ home_base: v }).eq('id', state.household.id);
+      if (error) toast(friendly(error)); else { state.household.home_base = v; toast('Home base saved.'); }
+      return;
+    }
+    if (act === 'filter') { state.filter = b.dataset.f; if (state.filter === 'mine') $('#priv').checked = true; render(); return; }
+    if (act === 'chip') { $('#say').value = b.textContent; $('#say').focus(); return; }
+    if (act === 'capture') { capture(); return; }
+    if (act === 'examples') { b.disabled = true; await addExamples(); return; }
+    const t = id ? getTask(id) : null;
+    if (act === 'yes' && t) {
+      const o = (t.options || []).find(x => x.id === opt);
+      if (o) await setMyApproval(id, a => { a.yes_option_id = o.id; a.yes_hash = termsHash(o); a.passed = a.passed.filter(x => x !== o.id); });
+    }
+    if (act === 'unyes') await setMyApproval(id, a => { a.yes_option_id = null; a.yes_hash = null; });
+    if (act === 'pass') await setMyApproval(id, a => { if (!a.passed.includes(opt)) a.passed.push(opt); if (a.yes_option_id === opt) { a.yes_option_id = null; a.yes_hash = null; } });
+    if (act === 'unpass') await setMyApproval(id, a => { a.passed = a.passed.filter(x => x !== opt); });
+    if (act === 'book') { const sel = document.getElementById('sc-' + id); await book(id, sel ? sel.value : 'hold'); }
+    if (act === 'research') await research(id);
+    if (act === 'done') await markDone(id);
+    if (act === 'undone') await reopen(id);
+    if (act === 'remove') await removeTask(id);
+    if (act === 'privremove') {
+      state.priv = state.priv.filter(x => x.id !== b.dataset.id); render();
+      const { error } = await sb.from('private_items').delete().eq('id', b.dataset.id);
+      if (error) { toast("Couldn't remove that. " + friendly(error)); refetchSoon('private_items'); }
+    }
+  } catch (err) { console.warn(err); }
+});
+document.addEventListener('change', async e => {
+  const b = e.target.closest('[data-act="privdone"]');
+  if (!b) return;
+  const p = state.priv.find(x => x.id === b.dataset.id);
+  if (p) { p.done = b.checked; render(); const { error } = await sb.from('private_items').update({ done: b.checked }).eq('id', p.id); if (error) { toast(friendly(error)); refetchSoon('private_items'); } }
+});
+
+/* ---------- boot ---------- */
+async function enterApp() {
+  const m = await loadMembership();
+  if (!m) { state.screen = 'setup'; render(); return; }
+  state.household = { id: m.household_id };
+  await loadAll();
+  state.screen = 'app';
+  render();
+  subscribe();
+  agent('status').then(r => { state.agentOn = !!(r && r.configured); render(); }).catch(() => { state.agentOn = null; });
+}
+let currentUid;
+async function onSession(session) {
+  const uid = session && session.user ? session.user.id : null;
+  if (uid === currentUid) return;
+  currentUid = uid;
+  state.session = session; state.uid = uid;
+  if (!uid) {
+    if (channel) { sb.removeChannel(channel); channel = null; }
+    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', agentOn: null });
+    render(); return;
+  }
+  try { await enterApp(); } catch (e) { state.err = friendly(e); state.screen = 'setup'; render(); }
+}
+(function boot() {
+  try { const j = new URLSearchParams(location.search).get('join'); if (j) localStorage.setItem('amp.join', j.toUpperCase()); } catch (e) {}
+  render();
+  sb.auth.onAuthStateChange((_evt, session) => { setTimeout(() => onSession(session), 0); });
+  sb.auth.getSession().then(({ data }) => onSession(data.session));
+})();
+
+window.__amp = { termsHash, priceJump, taskState, state, sb };
+})();
+
+</script>
+</body>
+</html>
