@@ -596,7 +596,7 @@ function renderError() {
   $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}<button type="button" class="btn link" data-act="signout">Sign out</button></header>
   <main><section class="gate" aria-labelledby="et">
     <h1 id="et" tabindex="-1">Can't reach Ampersand right now</h1>
-    <p>${esc(state.err || "We couldn't load your household.")} Your list is safe; nothing was changed.</p>
+    <p>${esc(state.err && state.err !== GENERIC_ERR ? state.err : "We couldn't load your household's list.")} Your list is safe; nothing was changed.</p>
     <div class="row"><button type="button" class="btn" data-act="retry" data-autofocus>Try again</button></div>
   </section></main></div>`;
 }
