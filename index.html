@@ -351,9 +351,65 @@ details.hist .who-agent { color: var(--agent); }
 .foot { color: var(--muted); font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; }
 .foot input { border: 1px solid var(--field-border); border-radius: 8px; padding: 7px 10px; background: var(--surface); width: 200px; max-width: 100%; }
 .empty.error { border-color: var(--changed); }
+/* Task header: status pill with the Edit link under it */
+.t-main { min-width: 0; }
+.t-side { display: grid; justify-items: end; gap: 2px; flex: none; }
+.edit-btn { min-height: 32px; padding: 4px 2px; font-size: 13px; }
+
+/* Inline task editor */
+.editbox { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px 14px; padding: 14px; border-radius: 14px;
+  background: var(--bg); border: 1px solid var(--field-border); }
+.editbox .wide { grid-column: 1 / -1; }
+.editbox .field input, .editbox .field select { width: 100%; border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 11px; background: var(--surface); min-height: 42px; }
+.editbox .field input[aria-invalid="true"] { border-color: var(--changed); box-shadow: 0 0 0 1px var(--changed); }
+.editbox .err:empty { display: none; }
+.opt-label { color: var(--muted); font-weight: 400; }
+
+/* Compact options: one line of "why", the rest on request */
+.opt-detail.why { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.opt.open .opt-detail.why { display: block; }
+.opt-more { display: grid; gap: 6px; }
+.opt-actions { align-items: center; flex-wrap: wrap; }
+.opt-foot > span:empty { display: none; }
+.opt-foot:has(> span:empty) { justify-content: flex-end; }
+details.others { border-top: 1px dashed var(--line); padding-top: 4px; }
+details.others > summary { cursor: pointer; color: var(--muted); font-size: 13.5px; font-weight: 600; padding: 8px 0; }
+details.others > summary:hover { color: var(--ink); }
+details.others[open] > summary { margin-bottom: 8px; }
+
+/* First run: the add box and two clear steps lead; no empty swatches to filter */
+.main.first-run { grid-template-columns: minmax(0, 1fr); }
+.empty.first { border-style: solid; background: var(--surface); }
+.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; color: var(--muted); max-width: 62ch; }
+.steps strong { color: var(--ink); font-weight: 600; }
+.steps li::marker { font-family: var(--font-display); font-style: italic; font-size: 18px; color: var(--ink); }
+
+/* Settings sheet (native <dialog>: focus trap and Escape for free) */
+dialog.sheet { border: 1px solid var(--line); border-radius: 20px; padding: 0; width: min(520px, calc(100% - 24px)); max-height: calc(100% - 48px);
+  background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px rgba(0,0,0,.28); }
+dialog.sheet::backdrop { background: rgba(34, 24, 19, .45); }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 8px; position: sticky; top: 0; background: var(--surface); }
+.sheet-head h2 { font: italic 500 26px/1.1 var(--font-display); margin: 0; }
+#setBody { padding: 4px 20px 20px; display: grid; gap: 4px; }
+.set-sec { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
+.set-sec:first-child { border-top: 0; }
+.set-sec h3 { margin: 0; font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.set-sec p { margin: 0; }
+.set-sec .row input { flex: 1; min-width: 0; }
+.check { display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; cursor: pointer; }
+.check input { margin-top: 2px; }
+.check input:disabled + * , .check:has(input:disabled) { color: var(--muted); cursor: default; }
+.help { font-size: 13px; color: var(--muted); margin: 0; }
+.set-status { padding: 0 20px 16px; min-height: 1em; }
+.set-status:empty { display: none; }
+.foot a, .help a { color: inherit; text-underline-offset: 3px; }
+@media (max-width: 600px) {
+  dialog.sheet { width: 100%; max-width: none; margin: auto 0 0; border-radius: 20px 20px 0 0; max-height: 88vh; }
+}
+
 @media (max-width: 820px) {
   /* 16px stops iOS Safari zooming the page when a field gets focus. */
-  textarea#say, .field input, .foot input, .book-row select { font-size: 16px; }
+  textarea#say, .field input, .foot input, .book-row select, .editbox .field input, .editbox .field select { font-size: 16px; }
 }
 </style>
 </head>
@@ -413,8 +469,22 @@ const priceJump = c => c + Math.max(2000, Math.round(c * 0.47 / 1000) * 1000);
 const state = {
   screen: 'loading', session: null, uid: null,
   household: null, members: [], tasks: [], approvals: [], priv: [],
-  filter: 'all', loadErrs: {}, lastLoadToast: 0, agentOn: null, checking: new Set(), fresh: new Set(), prevAgreed: null, err: ''
+  filter: 'all', loadErrs: {}, lastLoadToast: 0, agentOn: null, checking: new Set(), fresh: new Set(), prevAgreed: null, err: '',
+  editing: null, editDraft: null, expanded: new Set(), emailOn: null
 };
+/* Demo mode (?demo=1 turns it on, ?demo=0 off; remembered on this device) shows developer-only controls:
+   the simulated vendor answer at booking and setup instructions for the agent and email. */
+let DEMO = false;
+try {
+  const d = new URLSearchParams(location.search).get('demo');
+  if (d === '1') localStorage.setItem('amp.demo', '1');
+  if (d === '0') localStorage.removeItem('amp.demo');
+  DEMO = localStorage.getItem('amp.demo') === '1';
+} catch (e) {}
+/* Device notifications while the app is open in a background tab (opt-in, per device). */
+const devNotifyOn = () => { try { return localStorage.getItem('amp.devnotify') === '1' && 'Notification' in window && Notification.permission === 'granted'; } catch (e) { return false; } };
+/* On touch keyboards Return makes a new line and the Add button adds; with a real keyboard Enter adds. */
+const touchFirst = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
 let channel = null;
 /* Ids removed locally whose delete is still waiting out its Undo window. Refetches must not bring them back. */
 const pendingRemoval = new Set();
@@ -437,7 +507,7 @@ async function fetchTable(name) {
   let q;
   if (name === 'tasks') q = sb.from('tasks').select('*').eq('household_id', hh).order('created_at', { ascending: true });
   else if (name === 'approvals') q = sb.from('approvals').select('*').eq('household_id', hh);
-  else if (name === 'members') q = sb.from('members').select('household_id, user_id, display_name, color').eq('household_id', hh);
+  else if (name === 'members') q = sb.from('members').select('household_id, user_id, display_name, color, notify_email').eq('household_id', hh);
   else if (name === 'private_items') q = sb.from('private_items').select('*').eq('user_id', state.uid).order('created_at', { ascending: true });
   else if (name === 'households') q = sb.from('households').select('*').eq('id', hh).single();
   const { data, error } = await q;
@@ -606,12 +676,11 @@ function shell() {
   if ($('#app')) return;
   $('#root').innerHTML = `<div class="wrap" id="app">
   <header class="top">${brand}
-    <div class="who"><span class="me-chip" id="meChip"></span><button type="button" class="btn link" data-act="signout">Sign out</button></div>
+    <div class="who"><span class="me-chip" id="meChip"></span><button type="button" class="btn link" data-act="settings" aria-haspopup="dialog">Settings</button><button type="button" class="btn link" data-act="signout">Sign out</button></div>
   </header>
   <main id="main">
   <h1 class="sr">Ampersand: your shared list</h1>
   <div class="mode" id="mode"></div>
-  <div id="inviteSlot"></div>
   <section class="capture" id="capture" aria-labelledby="capLabel">
     <label class="lead" id="capLabel" for="say">What's on your mind?</label>
     <span class="priv-badge" id="privBadge"><svg width="11" height="12" viewBox="0 0 11 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="1" y="5.2" width="9" height="6" rx="1.5"/><path d="M3 5.2V3.6a2.5 2.5 0 0 1 5 0v1.6"/></svg>Private: only you will see this</span>
@@ -619,7 +688,7 @@ function shell() {
       <button type="button" class="mic" id="mic" aria-pressed="false" aria-label="Voice input" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
-      <textarea id="say" rows="2" placeholder="Say it the way you'd say it out loud. Several things at once is fine." aria-describedby="sayHint"></textarea>
+      <textarea id="say" rows="2" placeholder="Say it the way you'd say it out loud. Several things at once is fine." aria-describedby="sayHint" enterkeyhint="${touchFirst() ? 'enter' : 'done'}"></textarea>
       <button type="button" class="btn" id="add" data-act="capture">Add</button>
     </div>
     <div class="cap-foot">
@@ -630,19 +699,62 @@ function shell() {
       </div>
       <label class="priv"><input type="checkbox" id="priv"> Keep it private (only you see it, the agent never reads it)</label>
     </div>
-    <div class="cap-foot"><div class="agent-line" id="capStatus" aria-live="polite"></div><span class="hint" id="sayHint">Enter to add · Shift+Enter for a new line</span></div>
+    <div class="cap-foot"><div class="agent-line" id="capStatus" aria-live="polite"></div><span class="hint" id="sayHint">${touchFirst() ? 'Tap Add when you’re done' : 'Enter to add · Shift+Enter for a new line'}</span></div>
   </section>
+  <div id="inviteSlot"></div>
   <div class="summary" id="summary"></div>
-  <div class="main">
+  <div class="main" id="mainGrid">
     <nav class="bands" id="bands" aria-label="Projects"></nav>
     <section class="list" id="list" aria-label="Tasks"></section>
   </div>
   </main>
   <footer class="foot" id="foot"></footer>
-</div>`;
+</div>
+<dialog class="sheet" id="settings" aria-labelledby="setTitle">
+  <div class="sheet-head"><h2 id="setTitle">Settings</h2><button type="button" class="btn link" data-act="closesettings" aria-label="Close settings">Close</button></div>
+  <div id="setBody"></div>
+  <p class="help set-status" id="setStatus" role="status" aria-live="polite"></p>
+</dialog>`;
   setupVoice();
-  $('#say').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); capture(); } });
+  $('#say').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    // Real keyboards: Enter adds, Shift+Enter is a new line. Touch keyboards: Return is a new line, the Add button adds.
+    if (touchFirst() || e.shiftKey) return;
+    e.preventDefault(); capture();
+  });
   $('#priv').addEventListener('change', updatePrivUI);
+  $('#settings').addEventListener('close', () => { const b = $('[data-act="settings"]'); if (b) b.focus(); });
+}
+
+function renderSettings() {
+  const body = $('#setBody');
+  if (!body || !state.household) return;
+  const m = me(), p = partner();
+  const pname = p ? esc(p.display_name) : 'your partner';
+  const emailOn = m ? m.notify_email !== false : true;
+  const canNotify = 'Notification' in window;
+  let devOn = false; try { devOn = localStorage.getItem('amp.devnotify') === '1'; } catch (e) {}
+  const perm = canNotify ? Notification.permission : 'unsupported';
+  const emailNote = state.emailOn === false
+    ? `<p class="help">Email nudges aren't switched on for this app yet, so none will be sent.${DEMO ? ' To switch them on, save <code>RESEND_API_KEY</code> and <code>NOTIFY_FROM</code> in Supabase → Edge Functions → Secrets.' : ''}</p>` : '';
+  body.innerHTML = `
+  <section class="set-sec" aria-labelledby="setYou">
+    <h3 id="setYou">You</h3>
+    <p>${m ? `<span class="me-chip"><span class="dot c-${m.color}"></span>${esc(m.display_name)}</span> · your colour is ${m.color === 'orange' ? 'Raucous Orange' : 'Enchanted Blue'}` : ''}</p>
+  </section>
+  <section class="set-sec" aria-labelledby="setNudge">
+    <h3 id="setNudge">Nudges</h3>
+    <label class="check"><input type="checkbox" id="setEmail" data-act="setemail" ${emailOn ? 'checked' : ''}> Email me when ${pname} says yes to something, or the agent finds options</label>
+    ${emailNote}
+    <label class="check"><input type="checkbox" id="setDev" data-act="setdev" ${devOn && perm === 'granted' ? 'checked' : ''} ${canNotify && perm !== 'denied' ? '' : 'disabled'}> Notify me on this device while Ampersand is open in another tab</label>
+    ${!canNotify ? '<p class="help">This browser doesn’t support notifications.</p>' : perm === 'denied' ? '<p class="help">Notifications are blocked for this site. Allow them in your browser’s site settings to use this.</p>' : ''}
+  </section>
+  <section class="set-sec" aria-labelledby="setBase">
+    <h3 id="setBase">Home base</h3>
+    <div class="field"><label for="homeBase">Where the agent searches for options</label>
+      <div class="row"><input id="homeBase" value="${esc(state.household.home_base || '')}" maxlength="60" enterkeyhint="done" data-enter="savebase" autocomplete="address-level2"><button type="button" class="btn small" data-act="savebase">Save</button></div></div>
+  </section>
+  ${DEMO ? `<section class="set-sec" aria-labelledby="setDemo"><h3 id="setDemo">Demo mode</h3><p class="help">Developer controls are showing (simulated vendor answers, setup notes). <a href="?demo=0">Turn demo mode off</a>.</p></section>` : ''}`;
 }
 
 function updatePrivUI() {
@@ -661,7 +773,7 @@ function renderHeader() {
   $('#meChip').innerHTML = m ? `<span class="dot c-${m.color}"></span>${esc(m.display_name)}` : '';
   const p = partner();
   const agent = state.agentOn === false
-    ? '<span class="mono">agent not set up yet</span>'
+    ? '<span class="mono">agent off · tasks are added as typed</span>'
     : state.agentOn ? '<span class="mono">agent ready</span>'
     : state.agentUnreachable ? '<span class="mono">agent unreachable right now</span>' : '';
   const stale = Object.keys(state.loadErrs).length ? ' · <strong>offline or out of date: some data failed to load</strong>' : '';
@@ -676,11 +788,13 @@ function renderHeader() {
       <p class="note">Or have them sign in and enter code <code>${esc(state.household.invite_code)}</code>.</p>
       <div class="row"><button type="button" class="btn small" data-act="copyinvite">Copy link</button></div></div>`;
   } else slot.innerHTML = '';
-  if (state.agentOn === false) {
+  if (state.agentOn === false && DEMO) {
+    // Setup instructions are for whoever runs the app, so they only show in demo mode.
     slot.innerHTML += `<div class="invite"><p><strong>The agent isn't switched on yet.</strong> Tasks are added as typed until an Anthropic API key is saved as <code>ANTHROPIC_API_KEY</code> in Supabase → Edge Functions → Secrets.</p></div>`;
   }
-  $('#foot').innerHTML = state.household ? `<label for="homeBase">Home base for the agent's searches</label>
-    <input id="homeBase" value="${esc(state.household.home_base || '')}" maxlength="60" enterkeyhint="done" data-enter="savebase"><button type="button" class="btn link" data-act="savebase">Save</button>` : '';
+  $('#foot').innerHTML = DEMO ? `<span>Demo mode: vendor answers at booking are simulated.</span> <a href="?demo=0">Turn off</a>` : '';
+  const dlg = $('#settings');
+  if (dlg && dlg.open && !dlg.contains(document.activeElement)) renderSettings();
 }
 
 function renderSummary() {
@@ -738,16 +852,25 @@ function renderOption(t, o, ap) {
       (passed ? `<button type="button" class="btn link" data-act="unpass" ${ctx}>Undo pass</button>`
               : `<button type="button" class="btn ghost small" data-act="pass" ${ctx}>Pass</button>`);
   const was = o.requoted && o.was ? `<p class="stale">Was ${esc(fmtDay(o.was.date))}, ${esc(money(o.was.totalCents))}. You both need to say yes again.</p>` : '';
-  return `<li class="opt ${isMine ? 'mine' : ''} ${passed && !isMine ? 'passed' : ''}" style="--me: var(--${me() ? me().color : 'blue'})">
+  // Votes only appear once someone has said yes to or passed on this option; until then they're just noise.
+  const acted = [uid, p && p.user_id].filter(Boolean).some(u => { const y = validYes(t, ap, u); return (y && y.id === o.id) || (ap[u] && (ap[u].passed || []).includes(o.id)); });
+  const votes = acted ? `<div class="votes">${voteChip(uid, o, ap, t)}${p ? voteChip(p.user_id, o, ap, t) : ''}</div>` : '<span></span>';
+  // Compact by default: the "why" is one line; what's included and the source open on tap.
+  const key = `${t.id}:${o.id}`, open = state.expanded.has(key);
+  const hasMore = !!(o.includes || o.url || (o.detail && o.detail.length > 70));
+  const moreId = esc(`om-${t.id}-${o.id}`);
+  return `<li class="opt ${isMine ? 'mine' : ''} ${passed && !isMine ? 'passed' : ''} ${open ? 'open' : ''}" style="--me: var(--${me() ? me().color : 'blue'})">
     <div class="opt-head"><span class="vendor">${esc(o.vendor)}</span>${tag}</div>
     <p class="opt-title" id="${tid}">${esc(o.title)}</p>
-    ${o.detail ? `<p class="opt-detail">${esc(o.detail)}</p>` : ''}
     <div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in</div>
-    ${o.includes ? `<p class="opt-detail">Includes: ${esc(o.includes)}</p>` : ''}
-    ${o.url && /^https:\/\//.test(o.url) ? `<a class="src" href="${esc(o.url)}" target="_blank" rel="noopener noreferrer">Where the agent found this</a>` : ''}
+    ${o.detail ? `<p class="opt-detail why">${esc(o.detail)}</p>` : ''}
+    ${hasMore ? `<div class="opt-more" id="${moreId}" ${open ? '' : 'hidden'}>
+      ${o.includes ? `<p class="opt-detail">Includes: ${esc(o.includes)}</p>` : ''}
+      ${o.url && /^https:\/\//.test(o.url) ? `<a class="src" href="${esc(o.url)}" target="_blank" rel="noopener noreferrer">Where the agent found this</a>` : ''}
+    </div>` : ''}
     ${was}
     ${staleFor.length ? `<p class="stale">These terms changed after ${esc(staleFor.join(' and '))} said yes, so that yes no longer counts.</p>` : ''}
-    <div class="opt-foot"><div class="votes">${voteChip(uid, o, ap, t)}${p ? voteChip(p.user_id, o, ap, t) : ''}</div><div class="opt-actions">${actions}</div></div>
+    <div class="opt-foot">${votes}<div class="opt-actions">${hasMore ? `<button type="button" class="btn link" data-act="optmore" ${ctx} aria-expanded="${open}" aria-controls="${moreId}">${open ? 'Less' : 'Details'}</button>` : ''}${actions}</div></div>
   </li>`;
 }
 
@@ -760,13 +883,13 @@ function renderAgreed(t, s) {
     <p class="small">Before booking, the server re-checks the live date, time, vendor, what's included and the all-in price. If any of it differs from what you both approved, it won't book and will ask you both again. Payment is capped at ${esc(money(o.totalCents))}.</p>
     ${s.checking ? `<div class="agent-line busy">re-checking live terms with the vendor…</div>` : `
     <div class="book-row">
-      <label for="sc-${t.id}">Simulate the vendor's live answer (until real vendor connections exist)
+      ${DEMO ? `<label for="sc-${t.id}">Demo: simulate the vendor's live answer
         <select id="sc-${t.id}">
           <option value="hold">Live terms match what you approved</option>
           <option value="nextday">Only ${esc(DAYNAMES[nd.getDay()])} is open now</option>
           <option value="price">Price went up to ${esc(money(priceJump(o.totalCents)))}</option>
         </select>
-      </label>
+      </label>` : ''}
       <button type="button" class="btn" data-act="book" data-task="${t.id}" aria-describedby="tt-${t.id}">Book it</button>
     </div>`}
   </div>`;
@@ -813,15 +936,21 @@ function renderTask(t) {
     t.budget_cents ? `<span class="mono">budget ${esc(money(t.budget_cents))}</span>` : ''
   ].join('');
   const opts = t.options || [];
+  const tctx = `data-task="${t.id}" aria-describedby="tt-${t.id}"`;
   let body = '';
   if (s.key === 'agent' && !s.checking) body += `<div class="agent-line busy">searching for real options${t.budget_cents ? ` under ${esc(money(t.budget_cents))}` : ''}…</div>`;
   if (t.agent_note && s.key !== 'agent' && t.status !== 'booked') body += `<p class="note"><span class="mono">agent</span>${esc(t.agent_note)}</p>`;
   if (t.voided && t.status !== 'booked') body += renderVoided(t);
   if (t.status === 'booked' && t.booking) body += renderBooked(t);
   else if (s.key === 'agreed' || s.checking) body += renderAgreed(t, s);
-  if (opts.length && t.status !== 'booked' && !s.checking) body += `<ul class="opts">${opts.map(o => renderOption(t, o, ap)).join('')}</ul>`;
+  if (opts.length && t.status !== 'booked' && !s.checking) {
+    if (s.key === 'agreed') {
+      // The agreed option is already spelled out above; tuck the rest away.
+      const rest = opts.filter(o => o.id !== s.option.id);
+      if (rest.length) body += `<details class="others" data-others="${t.id}"><summary>${rest.length} other option${rest.length > 1 ? 's' : ''}</summary><ul class="opts">${rest.map(o => renderOption(t, o, ap)).join('')}</ul></details>`;
+    } else body += `<ul class="opts">${opts.map(o => renderOption(t, o, ap)).join('')}</ul>`;
+  }
   const acts = [];
-  const tctx = `data-task="${t.id}" aria-describedby="tt-${t.id}"`;
   if (!opts.length && s.key !== 'agent' && t.status !== 'booked' && state.agentOn !== false) {
     acts.push(`<button type="button" class="btn small" data-act="research" ${tctx}>Have the agent find options</button>`);
   }
@@ -831,14 +960,41 @@ function renderTask(t) {
   if (opts.length && state.agentOn !== false && t.status !== 'booked' && s.key !== 'agent') more.push(`<button type="button" class="btn link" data-act="research" ${tctx}>Get fresh options</button>`);
   if (opts.length && t.status !== 'booked') more.push(`<button type="button" class="btn link" data-act="done" ${tctx}>Mark done without booking</button>`);
   more.push(`<button type="button" class="btn link" data-act="remove" ${tctx}>Remove task</button>`);
-  return `<article class="task k-${s.key}" data-id="${t.id}" style="--c:${proj.c || 'var(--sand)'}">
-    <div class="t-top"><div><div class="t-meta">${meta}</div><h3 id="tt-${t.id}" tabindex="-1">${esc(t.title)}</h3></div><span class="status ${s.key}">${esc(s.label)}</span></div>
+  const editing = state.editing === t.id;
+  const canEdit = t.status !== 'booked' && t.status !== 'done';
+  return `<article class="task k-${s.key} ${editing ? 'editing' : ''}" data-id="${t.id}" style="--c:${proj.c || 'var(--sand)'}">
+    <div class="t-top"><div class="t-main"><div class="t-meta">${meta}</div><h3 id="tt-${t.id}" tabindex="-1">${esc(t.title)}</h3></div>
+      <div class="t-side"><span class="status ${s.key}">${esc(s.label)}</span>${canEdit && !editing ? `<button type="button" class="btn link edit-btn" data-act="edit" ${tctx} aria-expanded="false">Edit</button>` : ''}</div></div>
+    ${editing ? renderEdit(t) : ''}
     ${body}
     <div class="t-foot"><div class="t-actions">${acts.join('')}</div>
       <details class="hist"><summary>History and more</summary><ol>${logItems}</ol><div class="t-actions" style="margin-top:8px">${more.join('')}</div></details>
     </div>
   </article>`;
 }
+
+/* Inline editor for what the agent guessed: title, project, who, due date and budget. */
+function renderEdit(t) {
+  const d = state.editDraft || {};
+  const mm = me(), p = partner();
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
+  const who = [opt('', 'Both of you', d.assignee || '')];
+  if (mm) who.push(opt(mm.user_id, `${mm.display_name} (you)`, d.assignee || ''));
+  if (p) who.push(opt(p.user_id, p.display_name, d.assignee || ''));
+  if (d.assignee && !state.members.some(m => m.user_id === d.assignee)) who.push(opt(d.assignee, 'Someone who left', d.assignee));
+  const f = `ed-${t.id}`;
+  return `<form class="editbox" data-edit="${t.id}" novalidate aria-label="Edit task">
+    <div class="field wide"><label for="${f}-title">Task</label><input id="${f}-title" name="title" value="${esc(d.title)}" maxlength="200" required data-autofocus-edit></div>
+    <div class="field"><label for="${f}-project">Project</label><select id="${f}-project" name="project">${PROJ_IDS.map(id => opt(id, PROJECTS.find(x => x.id === id).name, d.project)).join('')}</select></div>
+    <div class="field"><label for="${f}-who">Who's on it</label><select id="${f}-who" name="assignee">${who.join('')}</select></div>
+    <div class="field"><label for="${f}-due">Due</label><input id="${f}-due" name="due" type="date" value="${esc(d.due || '')}"></div>
+    <div class="field"><label for="${f}-budget">Budget (all-in, $)</label><input id="${f}-budget" name="budget" inputmode="decimal" value="${esc(d.budget)}" placeholder="No budget" maxlength="10"></div>
+    <div class="field wide"><label for="${f}-reason">Why that date <span class="opt-label">(optional)</span></label><input id="${f}-reason" name="due_reason" value="${esc(d.due_reason || '')}" maxlength="60" placeholder="e.g. before the leaves drop"></div>
+    <p class="err wide" id="${f}-err" role="alert"></p>
+    <div class="row wide"><button type="submit" class="btn small">Save changes</button><button type="button" class="btn ghost small" data-act="canceledit" data-task="${t.id}">Cancel</button></div>
+  </form>`;
+}
+const draftOf = t => ({ title: t.title || '', project: t.project, assignee: t.assignee || '', due: t.due || '', due_reason: t.due_reason || '', budget: t.budget_cents ? String(t.budget_cents / 100) : '' });
 
 function renderPriv(p) {
   return `<div class="privcard ${p.done ? 'done' : ''}">
@@ -866,9 +1022,13 @@ function renderList() {
   const nothing = (f === 'mine' ? state.priv.length : open.length + (f === 'all' ? state.priv.filter(p => !p.done).length : 0)) === 0;
   if (nothing) {
     if (!state.tasks.length && f === 'all') {
-      html += `<div class="empty"><p class="big">Start with one thing on your mind.</p>
-        <p>Say it loosely, several things at once if you like. The agent sorts them into projects, works out deadlines and finds real options. Nothing is booked until you both say yes.</p>
-        <button type="button" class="btn ghost small" data-act="examples">Add three example tasks to try it</button></div>`;
+      const p = partner();
+      html += `<div class="empty first"><p class="big">Start with one thing on your mind.</p>
+        <ol class="steps">
+          <li><strong>Say it in the box above,</strong> loosely, several things at once if you like. The agent sorts them into projects, works out deadlines and finds real options.</li>
+          <li>${p ? `<strong>${esc(p.display_name)} is already here.</strong>` : '<strong>Invite your partner</strong> with the link below.'} You each say yes to an option; nothing is booked until you both agree on the same one.</li>
+        </ol>
+        <button type="button" class="btn ghost small" data-act="examples">Or add three example tasks to try it</button></div>`;
     } else if (f === 'mine') {
       html += `<div class="empty"><p>Nothing private yet. Tick "Keep it private" when you add something and only you will see it.</p></div>`;
     } else html += `<div class="empty"><p>Nothing open here.</p></div>`;
@@ -878,6 +1038,10 @@ function renderList() {
     html += `<div class="done-list"><h2>Done lately</h2>${done.map(t => `<div class="done-item"><span class="tick" aria-hidden="true">✓</span><span>${esc(t.title)}</span><button type="button" class="btn link" data-act="undone" data-task="${t.id}">Reopen</button></div>`).join('')}</div>`;
   }
   $('#list').innerHTML = html;
+  // First run: nothing to filter yet, so the project swatches and summary step aside for the add box and the steps.
+  const firstRun = !state.tasks.length && !state.priv.length && !state.loadErrs.tasks;
+  $('#mainGrid').classList.toggle('first-run', firstRun);
+  $('#bands').hidden = firstRun;
 }
 
 /* ---------- focus & announcements ---------- */
@@ -887,7 +1051,9 @@ function focusKey() {
   const ae = document.activeElement;
   if (!ae || ae === document.body || !ae.closest || !ae.closest('#bands, #list, #summary, #inviteSlot, #foot, #mode')) return null;
   const task = ae.dataset.task || (ae.closest('.task') && ae.closest('.task').dataset.id) || null;
-  return { el: ae, id: ae.id || null, act: ae.dataset.act || null, task, opt: ae.dataset.opt || null, f: ae.dataset.f || null, did: ae.dataset.id || null, summary: ae.tagName === 'SUMMARY' };
+  let sel = null;
+  try { if (typeof ae.selectionStart === 'number') sel = [ae.selectionStart, ae.selectionEnd]; } catch (e) {}
+  return { el: ae, id: ae.id || null, act: ae.dataset.act || null, task, opt: ae.dataset.opt || null, f: ae.dataset.f || null, did: ae.dataset.id || null, summary: ae.tagName === 'SUMMARY', sel };
 }
 function restoreFocus(k) {
   if (!k || document.contains(k.el)) return;
@@ -896,12 +1062,19 @@ function restoreFocus(k) {
   if (k.id) el = document.getElementById(k.id);
   if (!el && k.f) el = q(`[data-act="filter"][data-f="${cssq(k.f)}"]`);
   if (!el && k.act && k.task) el = q(`[data-act="${cssq(k.act)}"][data-task="${cssq(k.task)}"]${k.opt ? `[data-opt="${cssq(k.opt)}"]` : ''}`);
+  // A toggle swaps its button (Yes ↔ Take back, Pass ↔ Undo pass): land on its counterpart.
+  const twin = { yes: 'unyes', unyes: 'yes', pass: 'unpass', unpass: 'pass' }[k.act];
+  if (!el && twin && k.task) el = q(`[data-act="${twin}"][data-task="${cssq(k.task)}"]${k.opt ? `[data-opt="${cssq(k.opt)}"]` : ''}`);
+  if (!el && k.task && k.opt) el = q(`[data-task="${cssq(k.task)}"][data-opt="${cssq(k.opt)}"]:not([data-act="optmore"])`);
   if (!el && k.task && k.opt) el = q(`[data-task="${cssq(k.task)}"][data-opt="${cssq(k.opt)}"]`);
   if (!el && k.summary && k.task) el = q(`.task[data-id="${cssq(k.task)}"] summary`);
   if (!el && k.did) el = q(`[data-id="${cssq(k.did)}"][data-act]`);
   if (!el && k.task) el = q(`.task[data-id="${cssq(k.task)}"] h3`);
   if (!el) el = q('#list h2');
-  if (el) el.focus({ preventScroll: true });
+  if (el) {
+    el.focus({ preventScroll: true });
+    if (k.sel && el.id === k.id && typeof el.setSelectionRange === 'function') { try { el.setSelectionRange(k.sel[0], k.sel[1]); } catch (e) {} }
+  }
 }
 let announceTimer = null;
 function announce(msg) {
@@ -924,6 +1097,14 @@ function focusNewScreen() {
   if (target && (!first || !matchMedia('(hover: none)').matches)) target.focus({ preventScroll: true });
 }
 
+/* Keep what's typed in the edit form when a live update re-renders the list. */
+function readEditDraft() {
+  const form = state.editing && document.querySelector(`form[data-edit="${cssq(state.editing)}"]`);
+  if (!form) return;
+  const v = n => (form.elements[n] ? form.elements[n].value : '');
+  state.editDraft = { title: v('title'), project: v('project'), assignee: v('assignee'), due: v('due'), due_reason: v('due_reason'), budget: v('budget') };
+}
+
 function render() {
   if (state.screen === 'loading') { $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header><main><p class="mode" role="status">Loading your list…</p></main></div>`; focusNewScreen(); return; }
   if (state.screen === 'signin') { renderSignin(); focusNewScreen(); return; }
@@ -940,15 +1121,24 @@ function render() {
   if (state.prevLabels) {
     const msgs = [];
     for (const [id, label] of labels) { const was = state.prevLabels.get(id); if (was && was !== label) msgs.push(`${getTask(id).title}: ${label}`); }
-    if (msgs.length) announce(msgs.slice(0, 3).join('. '));
+    if (msgs.length) {
+      announce(msgs.slice(0, 3).join('. '));
+      if (document.hidden && devNotifyOn()) {
+        try { new Notification('Ampersand', { body: msgs.slice(0, 3).join('\n'), tag: 'ampersand-status' }); } catch (e) {}
+      }
+    }
   }
   state.prevLabels = labels;
   const openDetails = new Set([...document.querySelectorAll('details.hist[open]')].map(d => d.closest('.task') && d.closest('.task').dataset.id));
+  const openOthers = new Set([...document.querySelectorAll('details.others[open]')].map(d => d.dataset.others));
+  readEditDraft();
   const selects = {}; document.querySelectorAll('.book-row select').forEach(s => { selects[s.id] = s.value; });
   const baseFocused = document.activeElement && document.activeElement.id === 'homeBase';
   if (!baseFocused) renderHeader();
   renderSummary(); renderBands(); renderList();
   document.querySelectorAll('details.hist').forEach(d => { const c = d.closest('.task'); if (c && openDetails.has(c.dataset.id)) d.open = true; });
+  document.querySelectorAll('details.others').forEach(d => { if (openOthers.has(d.dataset.others)) d.open = true; });
+  if (state.editing && !getTask(state.editing)) { state.editing = null; state.editDraft = null; }
   for (const id in selects) { const s = document.getElementById(id); if (s) s.value = selects[id]; }
   restoreFocus(fk);
 }
@@ -967,6 +1157,9 @@ function hideToast(commit) {
 function armToast() { clearTimeout(toastTimer); toastTimer = setTimeout(() => hideToast(true), toastMs); }
 function toast(msg, opts) {
   opts = typeof opts === 'function' ? { undo: opts } : (opts || {});
+  // The settings sheet is a modal on the top layer and would cover the toast, so speak inside it instead.
+  const dlg = document.getElementById('settings');
+  if (dlg && dlg.open && !opts.undo && !opts.onExpire) { const st = $('#setStatus'); if (st) { st.textContent = ''; setTimeout(() => { st.textContent = msg; }, 30); } return; }
   if (toastExpire) { const f = toastExpire; toastExpire = null; f(); }
   $('#toast').classList.add('show'); // visible before the text changes, so screen readers announce it
   $('#toastMsg').textContent = msg;
@@ -1026,7 +1219,8 @@ async function setMyApproval(taskId, mutate) {
   if (i >= 0) state.approvals[i] = row; else state.approvals.push(row);
   render();
   const { error } = await sb.from('approvals').upsert(row, { onConflict: 'task_id,user_id' });
-  if (error) { toast(friendly(error)); refetchSoon('approvals'); }
+  if (error) { toast(friendly(error)); refetchSoon('approvals'); return false; }
+  return true;
 }
 
 function setCapStatus(text, busy) { const el = $('#capStatus'); if (!el) return; el.textContent = text; el.classList.toggle('busy', !!busy); }
@@ -1090,13 +1284,23 @@ async function research(taskId) {
   const i = state.tasks.indexOf(t);
   state.tasks[i] = Object.assign({}, t, { status: 'researching', research_at: new Date().toISOString() });
   render();
-  try { await agent('research', { taskId }); }
+  try {
+    const r = await agent('research', { taskId });
+    if (r && r.ok) nudge('options', taskId);
+  }
   catch (e) {
     toast(e.code === 'agent_not_configured' ? "The agent isn't set up yet."
       : e.code === 'timeout' ? 'The agent is still searching. Options will show up here when they are ready.'
       : "The agent couldn't finish that one. Try again in a minute.");
   }
   refetchSoon('tasks');
+}
+
+/* Best-effort email to the partner. Never blocks or bothers the person acting; failures are only logged. */
+function nudge(kind, taskId) {
+  if (!partner()) return;
+  const d = sb.functions.invoke('notify', { body: { action: 'nudge', kind, taskId, appUrl: location.origin + location.pathname } });
+  Promise.race([d, sleep(20000)]).then(r => { if (r && r.error) console.warn('nudge', kind, r.error); }).catch(e => console.warn('nudge', kind, e));
 }
 
 async function book(taskId, scenario) {
@@ -1289,7 +1493,11 @@ document.addEventListener('click', async e => {
       try { localStorage.removeItem('amp.join'); } catch (er) {}
       state.err = '';
       // The household now exists, so a load failure must go to the retry screen, never back to this form.
-      try { await enterApp(); } catch (er) { console.warn(er); state.err = friendly(er); state.screen = 'error'; render(); }
+      try { await enterApp(); } catch (er) { console.warn(er); state.err = friendly(er); state.screen = 'error'; render(); return; }
+      const mm = me();
+      if (mm && state.screen === 'app') toast(act === 'join'
+        ? `You're in. Your colour is ${mm.color === 'orange' ? 'orange' : 'blue'}; ${partner() ? partner().display_name : 'your partner'} is ${mm.color === 'orange' ? 'blue' : 'orange'}.`
+        : `Your household is ready. Your colour is ${mm.color === 'orange' ? 'orange' : 'blue'}.`);
       return;
     }
     if (act === 'copyinvite') {
@@ -1302,6 +1510,38 @@ document.addEventListener('click', async e => {
       if (!v) { toast('Add a town or neighbourhood first, like "Allen, TX".'); $('#homeBase').focus(); return; }
       const { error } = await sb.from('households').update({ home_base: v }).eq('id', state.household.id);
       if (error) toast(friendly(error)); else { state.household.home_base = v; toast('Home base saved.'); }
+      return;
+    }
+    if (act === 'edit' && id) {
+      const t0 = getTask(id); if (!t0) return;
+      state.editing = id; state.editDraft = draftOf(t0); render();
+      const f = document.querySelector(`form[data-edit="${cssq(id)}"] [data-autofocus-edit]`); if (f) f.focus();
+      return;
+    }
+    if (act === 'canceledit') { closeEdit(); return; }
+    if (act === 'optmore') {
+      const k = `${id}:${opt}`;
+      if (state.expanded.has(k)) state.expanded.delete(k); else state.expanded.add(k);
+      render(); return;
+    }
+    if (act === 'settings') { renderSettings(); const d = $('#settings'); if (d && !d.open) d.showModal(); return; }
+    if (act === 'closesettings') { const d = $('#settings'); if (d) d.close(); return; }
+    if (act === 'setemail') {
+      const on = b.checked;
+      const { error } = await sb.from('members').update({ notify_email: on }).eq('user_id', state.uid);
+      if (error) { b.checked = !on; toast("Couldn't save that. " + friendly(error)); return; }
+      const mm = me(); if (mm) mm.notify_email = on;
+      toast(on ? 'Email nudges on.' : 'Email nudges off.');
+      return;
+    }
+    if (act === 'setdev') {
+      const on = b.checked;
+      if (on && Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission().catch(() => 'denied');
+        if (perm !== 'granted') { b.checked = false; renderSettings(); toast('Notifications weren’t allowed, so this stays off.'); return; }
+      }
+      try { if (on) localStorage.setItem('amp.devnotify', '1'); else localStorage.removeItem('amp.devnotify'); } catch (er) {}
+      toast(on ? 'You’ll get a notification here when something needs you.' : 'Device notifications off.');
       return;
     }
     if (act === 'filter') {
@@ -1317,12 +1557,12 @@ document.addEventListener('click', async e => {
     const t = id ? getTask(id) : null;
     if (act === 'yes' && t) {
       const o = (t.options || []).find(x => x.id === opt);
-      if (o) await setMyApproval(id, a => { a.yes_option_id = o.id; a.yes_hash = termsHash(o); a.passed = a.passed.filter(x => x !== o.id); });
+      if (o && await setMyApproval(id, a => { a.yes_option_id = o.id; a.yes_hash = termsHash(o); a.passed = a.passed.filter(x => x !== o.id); })) nudge('yes', id);
     }
     if (act === 'unyes') await setMyApproval(id, a => { a.yes_option_id = null; a.yes_hash = null; });
     if (act === 'pass') await setMyApproval(id, a => { if (!a.passed.includes(opt)) a.passed.push(opt); if (a.yes_option_id === opt) { a.yes_option_id = null; a.yes_hash = null; } });
     if (act === 'unpass') await setMyApproval(id, a => { a.passed = a.passed.filter(x => x !== opt); });
-    if (act === 'book') { const sel = document.getElementById('sc-' + id); await book(id, sel ? sel.value : 'hold'); }
+    if (act === 'book') { const sel = DEMO && document.getElementById('sc-' + id); await book(id, sel ? sel.value : 'hold'); }
     if (act === 'research') await research(id);
     if (act === 'done') await markDone(id);
     if (act === 'undone') await reopen(id);
@@ -1330,6 +1570,48 @@ document.addEventListener('click', async e => {
     if (act === 'privremove') removePrivate(b.dataset.id);
   } catch (err) { console.warn(err); toast(friendly(err)); }
 });
+function closeEdit() {
+  const id = state.editing;
+  state.editing = null; state.editDraft = null; render();
+  const btn = id && document.querySelector(`[data-act="edit"][data-task="${cssq(id)}"]`);
+  if (btn) btn.focus();
+}
+/* Save the edit form: only changed fields are written, and the history says what changed. */
+document.addEventListener('submit', async e => {
+  const form = e.target.closest && e.target.closest('form[data-edit]');
+  if (!form) return;
+  e.preventDefault();
+  const t = getTask(form.dataset.edit);
+  if (!t) { closeEdit(); return; }
+  const errEl = form.querySelector('.err');
+  const v = n => (form.elements[n].value || '').trim();
+  const title = v('title');
+  if (!title) { errEl.textContent = 'Give the task a name.'; form.elements.title.setAttribute('aria-invalid', 'true'); form.elements.title.focus(); return; }
+  const rawBudget = v('budget').replace(/[$,\s]/g, '');
+  let budget = null;
+  if (rawBudget) {
+    const n = Number(rawBudget);
+    if (!Number.isFinite(n) || n <= 0 || n > 10000000) { errEl.textContent = 'Budget should be a dollar amount, like 200 or 149.99.'; form.elements.budget.setAttribute('aria-invalid', 'true'); form.elements.budget.focus(); return; }
+    budget = Math.round(n * 100);
+  }
+  const due = v('due');
+  if (due && !parseDay(due)) { errEl.textContent = 'Pick a valid date, or leave it empty.'; form.elements.due.focus(); return; }
+  const next = { title: title.slice(0, 200), project: PROJ_IDS.includes(v('project')) ? v('project') : t.project, assignee: v('assignee') || null, due: due || null, due_reason: v('due_reason').slice(0, 60) || null, budget_cents: budget };
+  const labels = { title: 'name', project: 'project', assignee: 'who', due: 'due date', due_reason: 'reason for the date', budget_cents: 'budget' };
+  const patch = {}, changed = [];
+  for (const k in next) if ((t[k] == null ? null : t[k]) !== next[k]) { patch[k] = next[k]; changed.push(labels[k]); }
+  if (!changed.length) { closeEdit(); return; }
+  patch.log = (t.log || []).concat(logEntry(`Changed the ${changed.join(', ')}.`));
+  const btn = form.querySelector('[type="submit"]'); btn.disabled = true;
+  try { await patchTask(t.id, patch); }
+  catch (er) { if (document.contains(btn)) btn.disabled = false; return; }
+  closeEdit();
+  toast(`Saved: ${next.title}`);
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.editing && e.target.closest && e.target.closest('form[data-edit]')) { e.preventDefault(); closeEdit(); }
+});
+
 /* Enter in a field runs the action named by its data-enter attribute. */
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter' || e.isComposing || !e.target.closest) return;
@@ -1363,6 +1645,9 @@ async function enterApp() {
   agent('status')
     .then(r => { state.agentOn = !!(r && r.configured); state.agentUnreachable = false; render(); })
     .catch(e => { if (e.code !== 'agent_not_configured') { state.agentOn = null; state.agentUnreachable = true; render(); } });
+  sb.functions.invoke('notify', { body: { action: 'status' } })
+    .then(r => { if (r && r.data && typeof r.data.email === 'boolean') { state.emailOn = r.data.email; renderSettings(); } })
+    .catch(() => {});
 }
 let currentUid;
 async function onSession(session) {
@@ -1380,11 +1665,12 @@ async function onSession(session) {
 }
 (function boot() {
   try {
-    const j = new URLSearchParams(location.search).get('join');
-    if (j) {
-      localStorage.setItem('amp.join', j.toUpperCase());
-      // Keep the invite code but take it out of the address bar, so it isn't reshared or bookmarked.
-      const u = new URL(location.href); u.searchParams.delete('join'); history.replaceState(history.state, '', u);
+    const params = new URLSearchParams(location.search);
+    const j = params.get('join');
+    if (j) localStorage.setItem('amp.join', j.toUpperCase());
+    if (j || params.has('demo')) {
+      // Keep the invite code and demo choice, but take them out of the address bar so they aren't reshared or bookmarked.
+      const u = new URL(location.href); u.searchParams.delete('join'); u.searchParams.delete('demo'); history.replaceState(history.state, '', u);
     }
   } catch (e) {}
   render();
