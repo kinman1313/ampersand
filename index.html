@@ -510,7 +510,11 @@ async function fetchTable(name) {
   else if (name === 'members') q = sb.from('members').select('household_id, user_id, display_name, color, notify_email').eq('household_id', hh);
   else if (name === 'private_items') q = sb.from('private_items').select('*').eq('user_id', state.uid).order('created_at', { ascending: true });
   else if (name === 'households') q = sb.from('households').select('*').eq('id', hh).single();
-  const { data, error } = await q;
+  let { data, error } = await q;
+  if (error && name === 'members' && /notify_email/.test(error.message || '')) {
+    // Database not migrated yet: load members without the nudge setting rather than locking everyone out.
+    ({ data, error } = await sb.from('members').select('household_id, user_id, display_name, color').eq('household_id', hh));
+  }
   if (error) {
     console.warn(name, error);
     state.loadErrs[name] = true;
@@ -1005,6 +1009,12 @@ function renderPriv(p) {
 }
 
 function renderList() {
+  // With nothing at all to show, the swatches are hidden (first run), so never leave the user stuck on a project view.
+  if (!state.tasks.length && !state.priv.length && !state.loadErrs.tasks && state.filter !== 'all') {
+    if (state.filter === 'mine') setPrivate(false);
+    state.filter = 'all';
+    renderBands();
+  }
   const f = state.filter;
   const proj = PROJECTS.find(p => p.id === f);
   let html = `<div class="list-head"><h2 tabindex="-1">${esc(proj.name)}</h2></div>`;
@@ -1117,15 +1127,22 @@ function render() {
   if (state.prevAgreed) for (const id of agreedNow) if (!state.prevAgreed.has(id)) { state.fresh.add(id); setTimeout(() => state.fresh.delete(id), 1500); }
   state.prevAgreed = agreedNow;
   // Tell screen readers about real status changes (a partner's yes, the agent finishing), not every repaint.
-  const labels = new Map(state.tasks.filter(t => t.status !== 'done').map(t => [t.id, taskState(t).label]));
+  const states = new Map(state.tasks.filter(t => t.status !== 'done').map(t => { const st = taskState(t); return [t.id, { label: st.label, key: st.key }]; }));
+  const labels = new Map([...states].map(([id, v]) => [id, v.label]));
   if (state.prevLabels) {
-    const msgs = [];
-    for (const [id, label] of labels) { const was = state.prevLabels.get(id); if (was && was !== label) msgs.push(`${getTask(id).title}: ${label}`); }
-    if (msgs.length) {
-      announce(msgs.slice(0, 3).join('. '));
-      if (document.hidden && devNotifyOn()) {
-        try { new Notification('Ampersand', { body: msgs.slice(0, 3).join('\n'), tag: 'ampersand-status' }); } catch (e) {}
+    const msgs = [], alerts = [];
+    for (const [id, label] of labels) {
+      const was = state.prevLabels.get(id);
+      if (was && was !== label) {
+        msgs.push(`${getTask(id).title}: ${label}`);
+        // Device notifications only for things that need you: your turn to pick, or ready to book.
+        const k = states.get(id).key;
+        if (k === 'needs' || k === 'split' || k === 'agreed') alerts.push(`${getTask(id).title}: ${label}`);
       }
+    }
+    if (msgs.length) announce(msgs.slice(0, 3).join('. '));
+    if (alerts.length && document.hidden && devNotifyOn()) {
+      try { new Notification('Ampersand', { body: alerts.slice(0, 3).join('\n'), tag: 'ampersand-status' }); } catch (e) {}
     }
   }
   state.prevLabels = labels;
@@ -1537,7 +1554,11 @@ document.addEventListener('click', async e => {
     if (act === 'setdev') {
       const on = b.checked;
       if (on && Notification.permission !== 'granted') {
-        const perm = await Notification.requestPermission().catch(() => 'denied');
+        // Older Safari only supports the callback form and returns undefined, so handle both.
+        const perm = await new Promise(res => {
+          try { const pr = Notification.requestPermission(res); if (pr && pr.then) pr.then(res, () => res('denied')); }
+          catch (er) { res('denied'); }
+        });
         if (perm !== 'granted') { b.checked = false; renderSettings(); toast('Notifications weren’t allowed, so this stays off.'); return; }
       }
       try { if (on) localStorage.setItem('amp.devnotify', '1'); else localStorage.removeItem('amp.devnotify'); } catch (er) {}
@@ -1608,9 +1629,9 @@ document.addEventListener('submit', async e => {
   closeEdit();
   toast(`Saved: ${next.title}`);
 });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && state.editing && e.target.closest && e.target.closest('form[data-edit]')) { e.preventDefault(); closeEdit(); }
-});
+document.addEventListener('keydown', e => { // capture phase, so it runs before the toast's Escape handler
+  if (e.key === 'Escape' && state.editing && e.target.closest && e.target.closest('form[data-edit]')) { e.preventDefault(); e.stopImmediatePropagation(); closeEdit(); }
+}, true);
 
 /* Enter in a field runs the action named by its data-enter attribute. */
 document.addEventListener('keydown', e => {
@@ -1646,7 +1667,12 @@ async function enterApp() {
     .then(r => { state.agentOn = !!(r && r.configured); state.agentUnreachable = false; render(); })
     .catch(e => { if (e.code !== 'agent_not_configured') { state.agentOn = null; state.agentUnreachable = true; render(); } });
   sb.functions.invoke('notify', { body: { action: 'status' } })
-    .then(r => { if (r && r.data && typeof r.data.email === 'boolean') { state.emailOn = r.data.email; renderSettings(); } })
+    .then(r => {
+      if (!(r && r.data && typeof r.data.email === 'boolean')) return;
+      state.emailOn = r.data.email;
+      const dlg = $('#settings');
+      if (!dlg || !dlg.open || !dlg.contains(document.activeElement)) renderSettings();
+    })
     .catch(() => {});
 }
 let currentUid;
