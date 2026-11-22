@@ -74,6 +74,9 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus, h3[tabindex="-1"]:focus { outl
 
 .wrap { max-width: 1060px; margin: 0 auto; padding: 18px 16px 64px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+/* Grid cards size their column to the content's min width by default; long chips or terms would then push the page sideways. */
+.capture, .gate, .task, .opt, .agreebox, .voided, .bookbox, .empty, .invite, .list, .done-list { grid-template-columns: minmax(0, 1fr); }
+.chip { max-width: 100%; }
 
 /* Header */
 .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
