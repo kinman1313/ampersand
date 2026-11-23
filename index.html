@@ -617,6 +617,10 @@ function subscribe() {
     });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.screen === 'app') loadAll().then(render); });
+setInterval(() => {
+  if (state.screen !== 'app' || document.hidden || state.editing) return;
+  if (state.tasks.some(t => t.status === 'researching')) render();
+}, 30000);
 
 /* ---------- agent ---------- */
 /* Research does live web searches, so it gets much longer than sorting does. Nothing waits forever. */
@@ -1013,7 +1017,10 @@ function renderTask(t) {
   const opts = t.options || [];
   const tctx = `data-task="${t.id}" aria-describedby="tt-${t.id}"`;
   let body = '';
-  if (s.key === 'agent' && !s.checking) body += `<div class="agent-line busy">searching for real options${t.budget_cents ? ` under ${esc(money(t.budget_cents))}` : ''}…</div>`;
+  if (s.key === 'agent' && !s.checking) {
+    const mins = Math.floor((Date.now() - msOf(t.research_at)) / 60000);
+    body += `<div class="agent-line busy">searching for real options${t.budget_cents ? ` under ${esc(money(t.budget_cents))}` : ''}… ${mins >= 1 ? `still working, started ${mins} min ago` : 'this can take a minute or two'}</div>`;
+  }
   if (t.agent_note && s.key !== 'agent' && t.status !== 'booked') body += `<p class="note"><span class="mono">agent</span>${esc(t.agent_note)}</p>`;
   if (t.voided && t.status !== 'booked') body += renderVoided(t);
   if (t.status === 'booked' && t.booking) body += renderBooked(t);
@@ -1507,7 +1514,7 @@ function setupVoice() {
     }
     $('#say').value = voiceBase + voiceFinal + interim;
   };
-  rec.onstart = () => { listening = true; mic.setAttribute('aria-pressed', 'true'); setCapStatus('listening… tap the mic again when you are done', true); };
+  rec.onstart = () => { listening = true; mic.setAttribute('aria-pressed', 'true'); setCapStatus('listening… tap the mic again when you are done'); };
   rec.onend = () => { listening = false; mic.setAttribute('aria-pressed', 'false'); setCapStatus(''); };
   rec.onerror = e => {
     const msg = {
