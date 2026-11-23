@@ -12,6 +12,7 @@ Live: https://www.ourampersand.app
 | Database | `supabase/migrations/` | Households of two, tasks, per-person approvals, private lists, row-level security, and the booking check. |
 | Agent | `supabase/functions/agent/` | Edge function that calls Claude to sort spoken to-dos into tasks and to research options with live web search. |
 | Nudges | `supabase/functions/notify/` | Edge function that emails your partner (through Resend) when you said yes to an option or the agent found options. Throttled to one per task and kind every 6 hours, and 20 a day per person. Each person can turn them off (`members.notify_email`). |
+| Outreach | `supabase/functions/outreach/`, `outreach-inbound/` | Drafts and sends quote requests or agreed booking confirmations to suggested vendors (through Resend), and optionally parses vendor email replies into Verified Quotes or booking confirmations while enforcing `public.terms_hash()`. |
 | Calendars | `supabase/functions/calendar/`, `calendar-callback/`, `_shared/calendar.ts` | Each person can connect a Google and/or Outlook calendar. Research avoids times either of you is busy, and a booking is added to the calendar of each person who opted in. Only free/busy times cross between partners; event details are never read. Tokens are encrypted at rest and never reach the browser. |
 
 Hosting: Vercel serves `index.html` as a static site. Supabase project: `ampersand` (`dmtgdhjcpjiqcrwfqscl`).
@@ -90,8 +91,9 @@ The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersan
 ## Deploying changes
 
 - App: push to `main`; Vercel redeploys.
-- Database: apply new files in `supabase/migrations/` (Supabase CLI: `supabase db push`).
+- Database: apply new files in `supabase/migrations/` (Supabase CLI: `supabase db push --remote`, or paste into Supabase SQL Editor).
 - Agent: `supabase functions deploy agent`.
+- Outreach: apply `20261126000000_ampersand_outreach.sql`, then `supabase functions deploy outreach` and `supabase functions deploy outreach-inbound --no-verify-jwt`. Reuses `RESEND_API_KEY`, `NOTIFY_FROM` (or `OUTREACH_FROM`), and `ANTHROPIC_API_KEY`. Works immediately with replies going to your own inbox; to capture vendor replies automatically inside Ampersand, add an inbound MX subdomain (e.g. `inbound.ourampersand.app`) pointing to Resend Receiving or a Cloudflare Email Worker webhook (`https://dmtgdhjcpjiqcrwfqscl.supabase.co/functions/v1/outreach-inbound`) and set `OUTREACH_INBOUND_DOMAIN` + `OUTREACH_WEBHOOK_SECRET` in Supabase Edge Function Secrets.
 - Calendars: see [Calendars](#calendars).
 - Nudges: apply `20261123000000_ampersand_notify.sql`, then `20261123000001_ampersand_notify_indexes.sql` on its own (it builds indexes concurrently), set the secrets above, then `supabase functions deploy notify`.
 
@@ -103,4 +105,6 @@ The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersan
 
 `sh tests/run-calendar-tests.sh` runs the calendar and calendar-callback functions, the agent's calendar check and `_shared/calendar.ts` against a fake database and fake Google, Microsoft and Claude APIs: status (no partner email), connect, the callback and `finish` (including someone else finishing, expiry and replay), busy merging and parsing, token refresh and revocation, add_event idempotency and partial failure, time zone maths across DST changes, encryption and state tampering.
 
-All suites: `sh tests/run-agent-tests.sh && sh tests/run-notify-tests.sh && sh tests/run-calendar-tests.sh`
+`sh tests/run-outreach-tests.sh` runs the outreach and outreach-inbound functions against a fake database, fake Claude API and fake Resend API: quote/confirm drafting, address privacy boundaries, email validation, thread reuse (`In-Reply-To`), daily household caps, Svix webhook signature & replay verification, Resend inbound fetching, deduplication, and `apply_vendor_reply` RPC calls.
+
+All suites: `sh tests/run-agent-tests.sh && sh tests/run-notify-tests.sh && sh tests/run-calendar-tests.sh && sh tests/run-outreach-tests.sh`

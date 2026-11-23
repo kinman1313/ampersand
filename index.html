@@ -846,6 +846,43 @@ body:has(dialog[open]) .toast { opacity: 0; visibility: hidden; pointer-events: 
   box-shadow: inset 0 1px 0 var(--specular);
 }
 
+/* Email vendor outreach */
+.tag.verified { color: var(--agent); background: color-mix(in srgb, var(--agent) 16%, transparent); padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--agent) 42%, transparent); }
+.outreach-badge {
+  font-family: var(--font-display); font-size: 12.5px; font-weight: 600; border-radius: 999px;
+  padding: 4px 11px; border: 1px solid var(--glass-border-strong);
+  background: var(--glass-pill); color: var(--ink);
+}
+.outreach-badge.quoted, .outreach-badge.confirmed { color: var(--agent); border-color: color-mix(in srgb, var(--agent) 50%, transparent); background: color-mix(in srgb, var(--agent) 14%, transparent); }
+.outreach-badge.declined { color: var(--changed); border-color: color-mix(in srgb, var(--changed) 50%, transparent); background: color-mix(in srgb, var(--changed) 14%, transparent); }
+.outreach-body { padding: 14px 22px max(24px, env(safe-area-inset-bottom)); display: grid; gap: 14px; }
+.outreach-privacy {
+  padding: 11px 14px; border-radius: 13px; font-size: 14px; color: var(--muted);
+  background: var(--glass-well); border: 1px solid var(--glass-border);
+}
+.outreach-privacy strong { color: var(--ink); }
+.outreach-thread { display: grid; gap: 10px; }
+.outreach-msg {
+  display: grid; gap: 5px; padding: 12px 14px; border-radius: 14px;
+  background: var(--glass-well); border: 1px solid var(--glass-border);
+}
+.outreach-msg.inbound {
+  border-color: color-mix(in srgb, var(--agent) 46%, var(--glass-border));
+  background: color-mix(in srgb, var(--agent) 10%, var(--glass-well));
+}
+.outreach-msg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.outreach-msg-head strong { color: var(--ink); font-family: var(--font-display); }
+.outreach-msg-txt { margin: 0; font-size: 14.5px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.outreach-form { display: grid; gap: 12px; }
+.outreach-form textarea {
+  width: 100%; min-height: 150px; resize: vertical; border: 1px solid var(--field-border);
+  border-radius: 13px; padding: 11px 14px; background: var(--glass-well); line-height: 1.5;
+}
+.outreach-form input {
+  width: 100%; border: 1px solid var(--field-border); border-radius: 12px;
+  padding: 10px 13px; background: var(--glass-well); min-height: 46px;
+}
+
 /* First run */
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
 .main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -1036,6 +1073,7 @@ const priceJump = c => c + Math.max(2000, Math.round(c * 0.47 / 1000) * 1000);
 const state = {
   screen: 'loading', session: null, uid: null,
   household: null, members: [], tasks: [], approvals: [], priv: [],
+  threads: [], messages: [], outreachOn: null, outreachInbound: null, outreachModal: null,
   filter: 'all', triage: null, showAllDone: false, privMode: false,
   loadErrs: {}, lastLoadToast: 0, agentOn: null,
   checking: new Set(), researching: new Set(), fresh: new Set(), prevAgreed: null, err: '',
@@ -1164,11 +1202,15 @@ async function fetchTable(name) {
   else if (name === 'members') q = sb.from('members').select('household_id, user_id, display_name, color, notify_email').eq('household_id', hh);
   else if (name === 'private_items') q = sb.from('private_items').select('*').eq('user_id', state.uid).order('created_at', { ascending: true });
   else if (name === 'households') q = sb.from('households').select('*').eq('id', hh).single();
+  else if (name === 'vendor_threads') q = sb.from('vendor_threads').select('*').eq('household_id', hh).order('updated_at', { ascending: false });
+  else if (name === 'vendor_messages') q = sb.from('vendor_messages').select('*').eq('household_id', hh).order('created_at', { ascending: true });
   let { data, error } = await q;
   if (error && name === 'members' && /notify_email/.test(error.message || '')) {
     ({ data, error } = await sb.from('members').select('household_id, user_id, display_name, color').eq('household_id', hh));
   }
   if (error) {
+    // If outreach tables aren't migrated yet, degrade silently without alarming the user.
+    if (name === 'vendor_threads' || name === 'vendor_messages') return;
     console.warn(name, error);
     state.loadErrs[name] = true;
     const now = Date.now();
@@ -1191,14 +1233,20 @@ async function fetchTable(name) {
   else if (name === 'members') state.members = data;
   else if (name === 'private_items') state.priv = data.filter(p => !pendingRemoval.has(p.id));
   else if (name === 'households') state.household = data;
+  else if (name === 'vendor_threads') state.threads = Array.isArray(data) ? data : [];
+  else if (name === 'vendor_messages') state.messages = Array.isArray(data) ? data : [];
 }
 const pending = {};
 function refetchSoon(name) {
   clearTimeout(pending[name]);
-  pending[name] = setTimeout(async () => { await fetchTable(name); render(); }, 120);
+  pending[name] = setTimeout(async () => {
+    await fetchTable(name);
+    render();
+    if ((name === 'vendor_threads' || name === 'vendor_messages') && state.outreachModal) renderOutreachModal();
+  }, 120);
 }
 async function loadAll() {
-  await Promise.all(['households', 'members', 'tasks', 'approvals', 'private_items'].map(fetchTable));
+  await Promise.all(['households', 'members', 'tasks', 'approvals', 'private_items', 'vendor_threads', 'vendor_messages'].map(fetchTable));
 }
 function subscribe() {
   if (channel) sb.removeChannel(channel);
@@ -1208,11 +1256,46 @@ function subscribe() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'approvals', filter: `household_id=eq.${hh}` }, () => refetchSoon('approvals'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'members', filter: `household_id=eq.${hh}` }, () => refetchSoon('members'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'private_items', filter: `user_id=eq.${state.uid}` }, () => refetchSoon('private_items'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_threads', filter: `household_id=eq.${hh}` }, () => refetchSoon('vendor_threads'))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_messages', filter: `household_id=eq.${hh}` }, () => refetchSoon('vendor_messages'))
     .subscribe(status => {
       if (ch !== channel) return;
       const live = status === 'SUBSCRIBED' ? true : (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') ? false : state.live;
       if (live !== state.live) { state.live = live; if (state.screen === 'app') render(); }
     });
+}
+async function outreachCall(action, payload) {
+  const d = new Date();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error('Email outreach took too long to answer.'), { code: 'timeout' })), 25000);
+  });
+  let res;
+  try {
+    res = await Promise.race([
+      sb.functions.invoke('outreach', { body: Object.assign({ action, today: isoDay(d), tz: householdTz() }, payload || {}) }),
+      timeout
+    ]);
+  } finally { clearTimeout(timer); }
+  if (res.error) {
+    let b = null; try { b = res.error.context && typeof res.error.context.json === 'function' ? await res.error.context.json() : null; } catch (e) {}
+    throw Object.assign(new Error((b && (b.detail || b.error)) || res.error.message), { code: b && b.error });
+  }
+  return res.data;
+}
+const threadFor = (taskId, optId) => (state.threads || []).find(x => x.task_id === taskId && x.option_id === optId) || null;
+const messagesFor = threadId => (state.messages || []).filter(m => m.thread_id === threadId);
+function threadBadge(taskId, optId) {
+  const th = threadFor(taskId, optId);
+  if (!th) return '';
+  const labels = {
+    sent: th.kind === 'confirm' ? 'Confirmation emailed' : 'Quote requested',
+    replied: 'Vendor replied',
+    quoted: 'Verified quote received',
+    confirmed: 'Confirmed by email',
+    declined: 'Vendor unavailable'
+  };
+  return `<span class="outreach-badge ${esc(th.status)}">${esc(labels[th.status] || 'Emailed')}</span>`;
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.screen === 'app') loadAll().then(render); });
 window.addEventListener('online', () => {
@@ -1488,6 +1571,10 @@ function shell() {
   <div class="sheet-head"><h2 id="setTitle" tabindex="-1">Settings</h2><button type="button" class="btn link" data-act="closesettings" aria-label="Close settings">Close</button></div>
   <p class="set-status" id="setStatus" role="status" aria-live="polite"></p>
   <div id="setBody"></div>
+</dialog>
+<dialog class="sheet" id="outreach" aria-labelledby="outreachTitle" closedby="any">
+  <div class="sheet-head"><h2 id="outreachTitle" tabindex="-1">Email vendor</h2><button type="button" class="btn link" data-act="closeoutreach" aria-label="Close email composer">Close</button></div>
+  <div class="outreach-body" id="outreachBody"></div>
 </dialog>`;
   setupVoice();
   $('#say').addEventListener('keydown', e => {
@@ -1509,6 +1596,8 @@ function shell() {
     if (!fromBack && history.state && history.state.ampSettings) history.back();
   });
   $('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  $('#outreach').addEventListener('close', () => { state.outreachModal = null; });
+  $('#outreach').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   if (dockObserver) dockObserver.disconnect();
   if ('IntersectionObserver' in window) {
     dockObserver = new IntersectionObserver(entries => {
@@ -1574,6 +1663,16 @@ function renderSettings() {
       <div class="row"><input id="homeBase" value="${esc(state.household.home_base || '')}" maxlength="60" enterkeyhint="done" data-enter="savebase" autocomplete="address-level2" aria-describedby="homeBaseErr"><button type="button" class="btn small" data-act="savebase">Save</button></div>
       <p class="err" id="homeBaseErr" role="alert"></p></div>
   </section>
+  <section class="set-sec" aria-labelledby="setContact">
+    <h3 id="setContact">Vendor contact details</h3>
+    <p class="help">Optional. Only included when you both agree and email a vendor to confirm a booking — never shared in quote requests.</p>
+    <div class="field"><label for="hhPhone">Phone number</label>
+      <input id="hhPhone" type="tel" value="${esc(state.household.contact_phone || '')}" maxlength="40" placeholder="(555) 123-4567" autocomplete="tel"></div>
+    <div class="field"><label for="hhAddress">Service address</label>
+      <input id="hhAddress" value="${esc(state.household.service_address || '')}" maxlength="140" placeholder="123 Maple Ln, Allen, TX 75013" autocomplete="street-address"></div>
+    <div class="row"><button type="button" class="btn small" data-act="savecontact">Save contact details</button></div>
+    <p class="err" id="hhContactErr" role="alert"></p>
+  </section>
   <section class="set-sec" aria-labelledby="setCal">
     <h3 id="setCal">Calendars</h3>
     ${renderCalSettings()}
@@ -1612,6 +1711,125 @@ function renderSettings() {
     <h3 id="setAcct">Account</h3>
     <div class="row"><button type="button" class="btn ghost small" data-act="signout">Sign out</button></div>
   </section>`;
+}
+
+function renderOutreachModal() {
+  const box = $('#outreachBody'), titleEl = $('#outreachTitle'), m = state.outreachModal;
+  if (!box || !m) return;
+  const t = getTask(m.taskId);
+  const o = t && (t.options || []).find(x => x.id === m.optionId);
+  const th = threadFor(m.taskId, m.optionId);
+  const msgs = th ? messagesFor(th.id) : [];
+  if (titleEl) titleEl.textContent = m.kind === 'confirm' ? `Confirm with ${m.vendorName || (o && o.vendor) || 'vendor'}` : `Email ${m.vendorName || (o && o.vendor) || 'vendor'}`;
+  const privacyText = m.kind === 'confirm'
+    ? `<strong>Booking confirmation:</strong> Both of you agreed to ${o ? `${esc(fmtDay(o.date))}, ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in` : 'these terms'}. Review the email before sending.`
+    : `<strong>Quote &amp; availability check:</strong> Shares your area (${esc((state.household && state.household.home_base) || 'your city')}) and open times only — never your street address or phone number.`;
+  const replyHint = state.outreachInbound
+    ? `Replies to this email automatically return to Ampersand and update this option card.`
+    : `Replies go straight to your inbox (${esc((state.session && state.session.user && state.session.user.email) || 'your email')}).`;
+  const threadHtml = msgs.length ? `<div class="outreach-thread">
+    <span class="mono">Conversation (${msgs.length})</span>
+    ${msgs.map(msg => `<div class="outreach-msg ${msg.direction === 'inbound' ? 'inbound' : ''}">
+      <div class="outreach-msg-head"><strong>${msg.direction === 'inbound' ? esc(m.vendorName || 'Vendor') : 'You'}</strong><span>${esc(fmtStamp(msOf(msg.created_at)))}</span></div>
+      <p class="outreach-msg-txt">${esc(msg.body_text)}</p>
+    </div>`).join('')}
+  </div>` : '';
+  box.innerHTML = `
+    <div class="outreach-privacy">${privacyText}</div>
+    ${threadHtml}
+    ${m.loading ? '<div class="agent-line busy">drafting email with your calendar availability…</div>' : ''}
+    <div class="outreach-form">
+      <div class="field"><label for="outTo">Vendor email</label>
+        <input id="outTo" type="email" value="${esc(m.toEmail || '')}" placeholder="hello@vendor.com" maxlength="160" autocomplete="off">
+        ${!m.toEmail ? '<span class="help">Paste the business’s contact email (check their website if the agent didn’t find one).</span>' : ''}
+      </div>
+      <div class="field"><label for="outSubj">Subject</label>
+        <input id="outSubj" value="${esc(m.subject || '')}" maxlength="160" placeholder="Quote &amp; availability request">
+      </div>
+      <div class="field"><label for="outMsg">Message</label>
+        <textarea id="outMsg" maxlength="3000" placeholder="Write or edit your message…">${esc(m.body || '')}</textarea>
+      </div>
+      <p class="help">${replyHint}</p>
+      <p class="err" id="outErr" role="alert">${esc(m.err || '')}</p>
+      <div class="row">
+        <button type="button" class="btn" data-act="outreachsend" ${m.sending || m.loading ? 'disabled' : ''}>${m.sending ? 'Sending…' : (m.kind === 'confirm' ? 'Send confirmation email' : 'Send quote request')}</button>
+        <button type="button" class="btn ghost small" data-act="outreachdraft" ${m.loading || m.sending ? 'disabled' : ''}>${m.loading ? 'Drafting…' : 'Regenerate AI draft'}</button>
+      </div>
+    </div>`;
+}
+
+async function draftOutreach() {
+  const m = state.outreachModal;
+  if (!m) return;
+  const curTo = $('#outTo') ? $('#outTo').value.trim() : m.toEmail;
+  m.loading = true; m.err = '';
+  renderOutreachModal();
+  try {
+    const r = await outreachCall('draft', { taskId: m.taskId, optionId: m.optionId, kind: m.kind });
+    if (!state.outreachModal || state.outreachModal.taskId !== m.taskId || state.outreachModal.optionId !== m.optionId) return;
+    m.subject = r.subject || m.subject;
+    m.body = r.body || m.body;
+    m.toEmail = curTo || r.vendorEmail || m.toEmail || '';
+    m.vendorName = r.vendorName || m.vendorName;
+    m.threadId = r.threadId || m.threadId;
+    m.replyMode = r.replyMode || m.replyMode;
+  } catch (e) {
+    if (state.outreachModal === m) m.err = friendly(e);
+  } finally {
+    if (state.outreachModal === m) { m.loading = false; renderOutreachModal(); }
+  }
+}
+
+async function openOutreach(taskId, optionId, kind) {
+  const t = getTask(taskId);
+  const o = t && (t.options || []).find(x => x.id === optionId);
+  if (!t || !o) return;
+  const th = threadFor(taskId, optionId);
+  state.outreachModal = {
+    taskId, optionId, kind: kind === 'confirm' ? 'confirm' : 'quote',
+    vendorName: o.vendor || 'Vendor',
+    toEmail: (th && th.vendor_email) || o.vendorEmail || '',
+    subject: '', body: '', threadId: th ? th.id : null,
+    loading: false, sending: false, err: ''
+  };
+  renderOutreachModal();
+  const dlg = $('#outreach');
+  if (dlg && !dlg.open) {
+    dlg.showModal();
+    const h = $('#outreachTitle'); if (h) h.focus({ preventScroll: true });
+  }
+  await draftOutreach();
+}
+
+async function sendOutreach() {
+  const m = state.outreachModal;
+  if (!m || m.sending) return;
+  const toEmail = ($('#outTo') ? $('#outTo').value : m.toEmail || '').trim();
+  const subject = ($('#outSubj') ? $('#outSubj').value : m.subject || '').trim();
+  const body = ($('#outMsg') ? $('#outMsg').value : m.body || '').trim();
+  Object.assign(m, { toEmail, subject, body, err: '' });
+  if (!/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]{2,}$/.test(toEmail)) {
+    m.err = 'Enter a valid vendor email address.'; renderOutreachModal(); const el = $('#outTo'); if (el) el.focus(); return;
+  }
+  if (!subject) { m.err = 'Add a subject line.'; renderOutreachModal(); const el = $('#outSubj'); if (el) el.focus(); return; }
+  if (body.length < 10) { m.err = 'Add a short message before sending.'; renderOutreachModal(); const el = $('#outMsg'); if (el) el.focus(); return; }
+  m.sending = true; renderOutreachModal();
+  try {
+    const r = await outreachCall('send', {
+      taskId: m.taskId, optionId: m.optionId, kind: m.kind,
+      toEmail, subject, body, threadId: m.threadId
+    });
+    const dlg = $('#outreach'); if (dlg && dlg.open) dlg.close();
+    await Promise.all([fetchTable('tasks'), fetchTable('vendor_threads'), fetchTable('vendor_messages')]);
+    render();
+    toast(r && r.replyMode === 'inbound'
+      ? `Email sent to ${m.vendorName}. Replies will update this option automatically.`
+      : `Email sent to ${m.vendorName}. Replies will go straight to your inbox.`);
+  } catch (e) {
+    m.sending = false;
+    m.err = friendly(e);
+    renderOutreachModal();
+  }
 }
 
 function updatePrivUI() {
@@ -1731,14 +1949,20 @@ function renderOption(t, o, ap) {
   const passed = ap[uid] && (ap[uid].passed || []).includes(o.id);
   const staleFor = state.members.filter(m => ap[m.user_id] && ap[m.user_id].yes_option_id === o.id && ap[m.user_id].yes_hash !== termsHash(o)).map(m => m.display_name);
   const tag = o.requoted ? '<span class="tag re">Re-quoted</span>'
+    : o.verifiedQuote ? '<span class="tag verified">Verified quote</span>'
     : o.source === 'example' ? '<span class="tag">Example</span>'
     : o.priceIsEstimate ? '<span class="tag price">Est. price</span>'
     : '<span class="tag price">Listed</span>';
   const tid = esc(`ot-${t.id}-${o.id}`);
   const ctx = `data-task="${t.id}" data-opt="${esc(o.id)}" aria-describedby="${tid}"`;
+  const th = threadFor(t.id, o.id);
+  const thCount = th ? messagesFor(th.id).length : 0;
+  const emailBtn = state.outreachOn !== false
+    ? `<button type="button" class="btn ghost small" data-act="outreach" data-kind="quote" ${ctx}>${thCount ? `Emails (${thCount})` : 'Email vendor'}</button>`
+    : '';
   const actions = isMine
-    ? `<button type="button" class="btn ghost small" data-act="unyes" ${ctx}>Take back my yes</button>`
-    : `<button type="button" class="btn ink small" data-act="yes" ${ctx}>Yes to this</button>` +
+    ? `${emailBtn}<button type="button" class="btn ghost small" data-act="unyes" ${ctx}>Take back my yes</button>`
+    : `${emailBtn}<button type="button" class="btn ink small" data-act="yes" ${ctx}>Yes to this</button>` +
       (passed ? `<button type="button" class="btn link" data-act="unpass" ${ctx}>Undo pass</button>`
               : `<button type="button" class="btn ghost small" data-act="pass" ${ctx}>Pass</button>`);
   const was = o.requoted && o.was ? `<p class="stale">Was ${esc(fmtDay(o.was.date))}${o.was.start && o.was.end ? ` (${esc(fmtWindow(o.was))})` : ''}, ${esc(money(o.was.totalCents))}. You both need to say yes again.</p>` : '';
@@ -1767,7 +1991,7 @@ function renderOption(t, o, ap) {
         </div>
         <div class="opt-price"><span class="amt">${esc(priceStr)}</span>${budgetNote}</div>
       </div>
-      <div class="terms-row"><div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))}</div>${calBadge(o)}</div>
+      <div class="terms-row"><div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))}</div>${calBadge(o)}${threadBadge(t.id, o.id)}</div>
       ${o.includes ? `<p class="opt-inc"><strong>Includes:</strong> ${esc(o.includes)}</p>` : ''}
       ${o.detail ? `<p class="opt-detail why">${esc(o.detail)}</p>` : ''}
       ${hasMore ? `<div class="opt-more" id="${moreId}" ${open ? '' : 'hidden'}>
@@ -1786,6 +2010,7 @@ function renderAgreed(t, s) {
   const hasUrl = !!(o.url && /^https:\/\//.test(o.url));
   const blueMem = state.members.find(x => x.color === 'blue') || mm;
   const orgMem = state.members.find(x => x.color === 'orange') || p;
+  const thBadge = threadBadge(t.id, o.id);
   return `<div class="agreebox ${state.fresh.has(t.id) ? 'fresh' : ''}">
     <div class="agree-head">
       <div class="join" aria-hidden="true">
@@ -1797,8 +2022,9 @@ function renderAgreed(t, s) {
     </div>
     <p><strong>${esc(mm.display_name)} and ${esc(p.display_name)} both said yes</strong> to ${esc(o.title)} from ${esc(o.vendor)} · ${esc(fmtDay(o.date))}, ${esc(fmtWindow(o))}.</p>
     ${o.includes ? `<p class="small"><strong>Includes:</strong> ${esc(o.includes)}</p>` : ''}
+    ${thBadge ? `<div class="terms-row">${thBadge}</div>` : ''}
     <p class="small">Before marking this booked, Ampersand re-checks that every approved term still matches. If anything differs, both yeses clear automatically.</p>
-    <p class="preview-note">Booking preview · simulates vendor confirmation; nothing is charged automatically.</p>
+    <p class="preview-note">Email the vendor to lock it in, or use Confirm &amp; book (preview) to simulate vendor confirmation.</p>
     ${s.checking ? `<div class="agent-line busy">re-checking live terms…</div>` : `
     <div class="book-row">
       ${DEMO ? `<label for="sc-${t.id}">Demo: simulate the vendor's live answer
@@ -1808,7 +2034,8 @@ function renderAgreed(t, s) {
           <option value="price">Price went up to ${esc(money(priceJump(o.totalCents)))}</option>
         </select>
       </label>` : ''}
-      <button type="button" class="btn book-cta" data-act="book" data-task="${t.id}" aria-describedby="tt-${t.id}">Confirm &amp; book (preview)</button>
+      ${state.outreachOn !== false ? `<button type="button" class="btn book-cta" data-act="outreach" data-kind="confirm" data-task="${t.id}" data-opt="${esc(o.id)}" aria-describedby="tt-${t.id}">Email ${esc(o.vendor)} to confirm</button>` : ''}
+      <button type="button" class="btn ${state.outreachOn !== false ? 'ghost small' : 'book-cta'}" data-act="book" data-task="${t.id}" aria-describedby="tt-${t.id}">Confirm &amp; book (preview)</button>
       ${hasUrl ? `<a class="btn ghost small" href="${esc(o.url)}" target="_blank" rel="noopener noreferrer">Open ${esc(o.vendor)} ↗</a>` : ''}
       <button type="button" class="btn ghost small" data-act="unyes" data-task="${t.id}" data-opt="${esc(o.id)}" aria-describedby="tt-${t.id}">Take back my yes</button>
     </div>`}
@@ -1836,10 +2063,11 @@ function renderVoided(t) {
 }
 function renderBooked(t) {
   const b = t.booking;
+  const byEmail = b.via === 'email';
   return `<div class="bookbox">
-    <span class="mono">Booked (preview) · ${esc(b.confirmation)}</span>
+    <span class="mono">${byEmail ? 'Booked by email' : 'Booked (preview)'} · ${esc(b.confirmation)}</span>
     <p><strong>${esc(b.vendor)}</strong> · ${esc(fmtDay(b.date))}, ${esc(fmtWindow(b))} · ${esc(money(b.capCents))} all-in</p>
-    <p class="note">Every term matched what you both approved. Simulated confirmation — no payment was charged.</p>
+    <p class="note">${byEmail ? 'Confirmed by email on the exact terms you both approved.' : 'Every term matched what you both approved. Simulated confirmation — no payment was charged.'}</p>
   </div>`;
 }
 
@@ -2720,6 +2948,25 @@ document.addEventListener('click', async e => {
       else { state.household.home_base = v; renderList(); toast('Home base saved.'); }
       return;
     }
+    if (act === 'savecontact') {
+      const phone = ($('#hhPhone') ? $('#hhPhone').value : '').trim();
+      const addr = ($('#hhAddress') ? $('#hhAddress').value : '').trim();
+      const errEl = $('#hhContactErr');
+      if (errEl) errEl.textContent = '';
+      const { error } = await busy(() => sb.from('households').update({ contact_phone: cut(phone, 40) || null, service_address: cut(addr, 140) || null }).eq('id', state.household.id));
+      if (error) {
+        if (errEl) errEl.textContent = /contact_phone|service_address/i.test(error.message || '') ? 'Apply the outreach database migration to save vendor contact details.' : friendly(error);
+      } else {
+        state.household.contact_phone = cut(phone, 40) || null;
+        state.household.service_address = cut(addr, 140) || null;
+        toast('Vendor contact details saved.');
+      }
+      return;
+    }
+    if (act === 'outreach' && id && opt) { await openOutreach(id, opt, b.dataset.kind || 'quote'); return; }
+    if (act === 'closeoutreach') { const d = $('#outreach'); if (d) d.close(); return; }
+    if (act === 'outreachdraft') { await draftOutreach(); return; }
+    if (act === 'outreachsend') { await sendOutreach(); return; }
     if (act === 'leavehh') { state.leaveArmed = true; renderSettings(); const c = $('[data-act="leavehh-confirm"]'); if (c) c.focus(); return; }
     if (act === 'leavehh-cancel') { state.leaveArmed = false; renderSettings(); const l = $('[data-act="leavehh"]'); if (l) l.focus(); return; }
     if (act === 'leavehh-confirm') {
@@ -3007,6 +3254,14 @@ async function enterApp() {
       if (!dlg || !dlg.open || !dlg.contains(document.activeElement)) renderSettings();
     })
     .catch(() => {});
+  outreachCall('status')
+    .then(r => {
+      if (!r || typeof r.configured !== 'boolean') return;
+      state.outreachOn = r.configured;
+      state.outreachInbound = r.inboundDomain || null;
+      render();
+    })
+    .catch(() => {});
 }
 let currentUid;
 let linkError = AUTH_LINK.error;
@@ -3024,7 +3279,7 @@ async function onSession(session, evt) {
   if (!uid) {
     if (channel) { sb.removeChannel(channel); channel = null; }
     Object.assign(cal, { status: null, busy: null, busyKey: '', busyAt: 0, busyLoading: false });
-    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', triage: null, showAllDone: false, privMode: false, err: linkError, recovering: false, sentKind: null, authMode: null, authUserPicked: false, authEmail: '', errField: null, editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), researching: new Set(), fresh: new Set(), prevPartnerYes: null, leaveArmed: false });
+    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], threads: [], messages: [], outreachOn: null, outreachInbound: null, outreachModal: null, screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', triage: null, showAllDone: false, privMode: false, err: linkError, recovering: false, sentKind: null, authMode: null, authUserPicked: false, authEmail: '', errField: null, editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), researching: new Set(), fresh: new Set(), prevPartnerYes: null, leaveArmed: false });
     if (linkError) state.errField = 'email';
     linkError = '';
     render(); return;

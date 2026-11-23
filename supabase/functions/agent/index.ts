@@ -161,20 +161,23 @@ Input: """${text.replace(/"""/g, '"')}"""`;
       try {
         const prompt = `You are the research agent in a couple's shared household app. Find exactly 3 concrete options for this task so each of them can say yes to one. ${todayLine} Home base: ${homeBase}.
 Task: "${t.title}". Project: ${t.project}. ${t.due ? `Needed by ${t.due} (${t.due_reason || "their deadline"}).` : "No deadline given."} ${t.budget_cents ? `Budget: under $${(t.budget_cents / 100).toFixed(2)} all-in.` : ""}
-Use web search to find real providers near ${homeBase} and their published prices where available. Only name a business you actually found; include the page you found it on as "url". If a price isn't published, estimate it and set "priceIsEstimate": true. Never invent phone numbers or addresses.
+Use web search to find real providers near ${homeBase} and their published prices where available. Only name a business you actually found; include the page you found it on as "url", and include "vendorEmail" ONLY if an official contact email is published directly on that business's website (otherwise null). If a price isn't published, estimate it and set "priceIsEstimate": true. Never invent emails, phone numbers or addresses.
 Each option needs exact terms the couple will approve: a specific date after today and on or before the deadline (YYYY-MM-DD), a start and end time (HH:MM, 24-hour; for a purchase, the delivery window), and an all-in total in cents including tax, fees and tip.${calendarLine}
-Finish with JSON only, no prose after it: {"note":"one plain sentence for the couple","options":[{"vendor":"","title":"","detail":"one sentence on why this one","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","totalCents":0,"includes":"short list","url":"https://...","priceIsEstimate":true}]}`;
+Finish with JSON only, no prose after it: {"note":"one plain sentence for the couple","options":[{"vendor":"","title":"","detail":"one sentence on why this one","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","totalCents":0,"includes":"short list","url":"https://...","vendorEmail":null,"priceIsEstimate":true}]}`;
         const out = extractJSON((await callClaude(key, RESEARCH_MODEL, prompt, 4000, true)).text);
         const raw = Array.isArray(out?.options) ? (out!.options as Record<string, unknown>[]) : [];
         const options = raw.slice(0, 3).map((o) => {
           let cents = Math.round(Number(o.totalCents));
           if (Number.isFinite(cents) && cents > 0 && cents < 500) cents *= 100;
           const url = typeof o.url === "string" && /^https:\/\/[^\s]+$/.test(o.url) ? o.url.slice(0, 400) : null;
-          return {
+          const rawEmail = typeof o.vendorEmail === "string" ? o.vendorEmail.trim().toLowerCase() : "";
+          const vendorEmail = rawEmail.length <= 160 && /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]{2,}$/.test(rawEmail) ? rawEmail : null;
+          const base = {
             id: rid(), vendor: String(o.vendor || "Local provider").slice(0, 90), title: String(o.title || "").slice(0, 100),
             detail: String(o.detail || "").slice(0, 240), date: String(o.date || ""), start: String(o.start || ""), end: String(o.end || ""),
             totalCents: cents, includes: String(o.includes || "").slice(0, 140), url, priceIsEstimate: o.priceIsEstimate !== false, source: "agent",
           };
+          return vendorEmail ? { ...base, vendorEmail } : base;
         }).filter((o) => o.title && isDay(o.date) && o.date > today && isTime(o.start) && isTime(o.end) && Number.isFinite(o.totalCents) && o.totalCents > 0);
         if (!options.length) throw new Error("no usable options");
         // Drop options that clash with either person's calendar. If every one clashes, keep them and say so.
