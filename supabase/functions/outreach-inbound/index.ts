@@ -61,10 +61,25 @@ function extractReplyToken(toField: unknown): string | null {
   const list = Array.isArray(toField) ? toField : [toField];
   for (const item of list) {
     const s = typeof item === "string" ? item : (item && typeof item === "object" && typeof (item as { email?: unknown }).email === "string" ? (item as { email: string }).email : "");
-    const m = /reply\+([a-f0-9]{16,64})@/i.exec(s);
+    const m = /[a-z0-9._-]+\+([a-f0-9]{16,64})@/i.exec(s);
     if (m) return m[1].toLowerCase();
   }
   return null;
+}
+
+function extractBareEmail(addr: unknown): string | null {
+  const s = typeof addr === "string" ? addr : "";
+  const m = /<([^>\s]+@[^>\s]+)>/.exec(s) || /([^\s<>",;]+@[^\s<>",;]+)/.exec(s);
+  return m ? m[1].trim().toLowerCase() : null;
+}
+
+function extractRefIds(headers: unknown): string[] {
+  if (!headers || typeof headers !== "object") return [];
+  const h = headers as Record<string, unknown>;
+  const raw = [h["in-reply-to"], h["In-Reply-To"], h["references"], h["References"]].filter((x) => typeof x === "string").join(" ");
+  const ids: string[] = [];
+  for (const m of raw.matchAll(/<([^>\s]+)>/g)) ids.push(m[1]);
+  return ids;
 }
 
 function stripHtml(html: string): string {
@@ -164,8 +179,7 @@ Deno.serve(async (req) => {
       : payload;
     if (payload.type && payload.type !== "email.received") return json({ ok: true, ignored: payload.type });
 
-    const token = extractReplyToken(data.to);
-    if (!token) return json({ ok: true, ignored: "no_reply_token" });
+    let headersObj: unknown = data.headers || null;
 
     const resendKey = Deno.env.get("RESEND_API_KEY") || "";
     let bodyText = typeof data.text === "string" ? data.text.trim() : "";
@@ -173,14 +187,15 @@ Deno.serve(async (req) => {
 
     // Resend's email.received webhook sends metadata; fetch full content if text/html aren't inline
     const emailId = typeof data.email_id === "string" ? data.email_id : "";
-    if (!bodyText && emailId && resendKey) {
+    if ((!bodyText || !headersObj) && emailId && resendKey) {
       const r = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
         headers: { Authorization: `Bearer ${resendKey}` },
       }).catch(() => null);
       if (r && r.ok) {
         const full = await r.json().catch(() => ({}));
-        if (typeof full.text === "string" && full.text.trim()) bodyText = full.text.trim();
-        else if (typeof full.html === "string" && full.html.trim()) bodyText = stripHtml(full.html);
+        if (!bodyText && typeof full.text === "string" && full.text.trim()) bodyText = full.text.trim();
+        else if (!bodyText && typeof full.html === "string") bodyText = stripHtml(full.html);
+        if (!headersObj && full.headers) headersObj = full.headers;
       }
     }
     if (!bodyText) bodyText = "(Empty email reply)";
@@ -192,11 +207,33 @@ Deno.serve(async (req) => {
       : (emailId ? `resend:${emailId}` : null);
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: thread, error: thErr } = await admin.from("vendor_threads")
-      .select("id, household_id, task_id, option_id, vendor_name, kind")
-      .eq("reply_token", token).maybeSingle();
-    if (thErr) return json({ error: "db_error", detail: thErr.message }, 500);
-    if (!thread) return json({ ok: true, ignored: "unknown_token" });
+    const token = extractReplyToken(data.to);
+    let thread: { id: string; household_id: string; task_id: string; option_id: string; vendor_name: string; kind: string } | null = null;
+    if (token) {
+      const { data: th, error: thErr } = await admin.from("vendor_threads")
+        .select("id, household_id, task_id, option_id, vendor_name, kind")
+        .eq("reply_token", token).maybeSingle();
+      if (thErr) return json({ error: "db_error", detail: thErr.message }, 500);
+      thread = th;
+    }
+    if (!thread) {
+      for (const ref of extractRefIds(headersObj)) {
+        const { data: th } = await admin.from("vendor_threads")
+          .select("id, household_id, task_id, option_id, vendor_name, kind")
+          .eq("last_message_id", ref).maybeSingle();
+        if (th) { thread = th; break; }
+      }
+    }
+    if (!thread) {
+      const sender = extractBareEmail(fromAddr);
+      if (sender) {
+        const { data: ths } = await admin.from("vendor_threads")
+          .select("id, household_id, task_id, option_id, vendor_name, kind")
+          .eq("vendor_email", sender).order("updated_at", { ascending: false }).limit(1);
+        if (Array.isArray(ths) && ths.length) thread = ths[0];
+      }
+    }
+    if (!thread) return json({ ok: true, ignored: "unknown_thread" });
 
     // Idempotency: ignore webhook retries with the same message_id
     if (messageId) {

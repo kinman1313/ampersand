@@ -184,7 +184,22 @@ async function test(name, fn) {
 await test("status reports configured, inboundDomain and canDraft", async () => {
   const r = await callOutreach({ action: "status" });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { configured: true, inboundDomain: "inbound.ourampersand.app", canDraft: true });
+  assert.deepEqual(r.body, { configured: true, inboundDomain: "inbound.ourampersand.app", inboundAddress: null, canDraft: true });
+});
+
+await test("OUTREACH_INBOUND_ADDRESS=jeeves@ourampersand.app uses jeeves+<token>@ourampersand.app and defaults From", async () => {
+  env.delete("OUTREACH_INBOUND_DOMAIN");
+  env.set("OUTREACH_INBOUND_ADDRESS", "jeeves@ourampersand.app");
+  const st = await callOutreach({ action: "status" });
+  assert.equal(st.body.inboundAddress, "jeeves@ourampersand.app");
+  const r = await callOutreach({
+    action: "send", kind: "quote", taskId: db.tasks[0].id, optionId: "o1",
+    toEmail: "hello@cedarpine.example", subject: "Quote request",
+    body: "Hi there, could you send us a quote for Sat Nov 28?",
+  });
+  assert.equal(r.status, 200);
+  assert.equal(sentEmails[0].from, "Jeeves via Ampersand <jeeves@ourampersand.app>");
+  assert.match(sentEmails[0].reply_to, /^jeeves\+[a-f0-9]{36}@ourampersand\.app$/);
 });
 
 await test("unauthenticated caller rejected 401", async () => {
@@ -337,7 +352,7 @@ await test("inbound webhook accepts x-outreach-secret for Cloudflare Email Worke
   });
   claudeReply = JSON.stringify({ outcome: "confirmed", summary: "Confirmed for Sat Nov 28 at $185." });
   const raw = JSON.stringify({
-    from: "hello@cedarpine.example", to: `reply+${token}@inbound.ourampersand.app`,
+    from: "hello@cedarpine.example", to: `jeeves+${token}@ourampersand.app`,
     subject: "Re: Booking confirmation", text: "You're all set for Sat Nov 28 9am!", messageId: "<m-123@vendor>",
   });
   const r = await inboundHandler(new Request("https://fn/in", {
@@ -347,6 +362,28 @@ await test("inbound webhook accepts x-outreach-secret for Cloudflare Email Worke
   }));
   assert.equal(r.status, 200);
   assert.equal(rpcCalls[0].args.p_outcome, "confirmed");
+});
+
+await test("inbound reply to bare jeeves@ourampersand.app matches thread by vendor sender email", async () => {
+  db.vendor_threads.push({
+    id: "44444444-4444-4444-8444-444444444444", household_id: "hh1",
+    task_id: db.tasks[0].id, option_id: "o1", vendor_name: "Cedar & Pine Chimney",
+    vendor_email: "hello@cedarpine.example", reply_token: "1234567890abcdef1234567890abcdef1234", kind: "quote", status: "sent",
+  });
+  claudeReply = JSON.stringify({ outcome: "quoted", summary: "$190 all-in for Saturday.", totalCents: 19000 });
+  const raw = JSON.stringify({
+    type: "email.received",
+    data: { email_id: "em_bare_1", from: "Cedar & Pine <hello@cedarpine.example>", to: ["jeeves@ourampersand.app"], subject: "Re: Chimney sweep", text: "We can do $190 all-in Saturday morning." },
+  });
+  const r = await inboundHandler(new Request("https://fn/in", {
+    method: "POST",
+    headers: signSvix(raw, env.get("OUTREACH_WEBHOOK_SECRET")),
+    body: raw,
+  }));
+  assert.equal(r.status, 200);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].args.p_thread_id, "44444444-4444-4444-8444-444444444444");
+  assert.equal(rpcCalls[0].args.p_quote.totalCents, 19000);
 });
 
 console.log(`${passed}/${passed} passed`);

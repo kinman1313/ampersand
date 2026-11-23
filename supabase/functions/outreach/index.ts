@@ -160,14 +160,18 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== "object") return json({ error: "bad_request", detail: "body must be a JSON object" }, 400);
 
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    const fromAddr = Deno.env.get("OUTREACH_FROM") || Deno.env.get("NOTIFY_FROM") || "";
-    const inboundDomain = (Deno.env.get("OUTREACH_INBOUND_DOMAIN") || "").trim().toLowerCase() || null;
+    const inboundAddress = (Deno.env.get("OUTREACH_INBOUND_ADDRESS") || "").trim().toLowerCase();
+    const inboundParts = /^([a-z0-9._-]+)@([a-z0-9.-]+\.[a-z]{2,})$/i.exec(inboundAddress);
+    const inboundUser = inboundParts ? inboundParts[1] : "reply";
+    const inboundDomain = inboundParts ? inboundParts[2] : ((Deno.env.get("OUTREACH_INBOUND_DOMAIN") || "").trim().toLowerCase() || null);
+    const fromAddr = Deno.env.get("OUTREACH_FROM") || (inboundParts ? `Jeeves via Ampersand <${inboundAddress}>` : "") || Deno.env.get("NOTIFY_FROM") || "";
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
 
     if (body.action === "status") {
       return json({
         configured: !!(resendKey && fromAddr),
         inboundDomain,
+        inboundAddress: inboundParts ? inboundAddress : null,
         canDraft: !!anthropicKey,
       });
     }
@@ -347,11 +351,11 @@ Respond with JSON only: {"subject":"...","body":"..."}`;
       threadId = created.id;
     }
 
-    // Reply-To: automated inbound subdomain if configured, else caller's own email so replies still reach them!
+    // Reply-To: automated inbound address (e.g. jeeves+<token>@ourampersand.app) if configured, else caller's own email
     let replyTo: string | null = null;
     let replyMode: "inbound" | "direct" = "direct";
     if (inboundDomain) {
-      replyTo = `reply+${replyToken}@${inboundDomain}`;
+      replyTo = `${inboundUser}+${replyToken}@${inboundDomain}`;
       replyMode = "inbound";
     } else {
       const { data: au } = await admin.auth.admin.getUserById(user.id);
