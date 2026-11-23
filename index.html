@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#efe5d8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#221813" media="(prefers-color-scheme: dark)">
+<script>
+/* Apply a saved Light/Dark choice before first paint; "system" (no attribute) follows the device. */
+(function () {
+  try {
+    var t = localStorage.getItem('amp.theme');
+    if (t === 'light' || t === 'dark') {
+      document.documentElement.setAttribute('data-theme', t);
+      var c = t === 'dark' ? '#221813' : '#efe5d8';
+      document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.setAttribute('content', c); });
+    }
+  } catch (e) {}
+})();
+</script>
 <title>Ampersand</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23221813'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='46' fill='%23d39f8b'%3E%26%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +28,8 @@
 :root {
   /* Palette: Wood Bark, Bright Brown, Astronaut Blue, Enchanted Blue, Raucous Orange, Shy Champagne Blush + Sage, Sand, Ocean, Plum, Ivory */
   --bark: #30241e; --brown: #6d3f2f; --astronaut: #204759; --enchanted: #0e6f8d; --orange: #c4532c; --blush: #d39f8b;
-  --sage: #4d4934; --sand: #b79679; --ocean: #4a5f60; --plum: #562d30; --ivory: #dbc5ae;
+  --sage: #4d4934; --sand: #b79679; --ocean: #4a5f60; --plum: #562d30; --ivory: #dbc5ae; --moss: #3f5a45;
+  /* Blue and orange are reserved for the two people; project swatches stay in earthy, non-blue hues. */
 
   --bg: #efe5d8;
   --surface: #f8f1e8;
@@ -144,7 +158,7 @@ textarea#say[readonly] { opacity: .7; }
 .agent-line.busy::before {
   content: ""; width: 34px; height: 2px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--agent), transparent); background-size: 200% 100%;
-  animation: scan 1.4s linear infinite;
+  animation: scan 1.4s linear 4; /* about 6 seconds, then it rests (WCAG 2.2.2) */
 }
 @keyframes scan { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
@@ -178,7 +192,7 @@ textarea#say[readonly] { opacity: .7; }
 .b-all { background-color: var(--blush); color: var(--bark); }
 .b-home { background-color: var(--ocean); }
 .b-money { background-color: var(--sage); }
-.b-kids { background-color: var(--astronaut); }
+.b-kids { background-color: var(--moss); }
 .b-weekend { background-color: var(--brown); }
 .b-us { background-color: var(--plum); }
 .b-mine { background-color: var(--sand); color: var(--bark); }
@@ -388,6 +402,25 @@ details.others[open] > summary { margin-bottom: 8px; }
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
 .main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .foot:empty { display: none; }
+/* Skip link: hidden until focused from the keyboard. */
+.skip { position: absolute; left: 12px; top: -60px; z-index: 20; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-weight: 600; text-decoration: none; }
+.skip:focus { top: 12px; }
+#list:focus { outline: none; }
+/* Appearance segmented control */
+.seg-radio { display: inline-flex; border: 1px solid var(--field-border); border-radius: 999px; padding: 3px; background: var(--bg); justify-self: start; flex-wrap: wrap; }
+.seg-opt { position: relative; }
+.seg-opt input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.seg-opt span { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg-opt input:checked + span { background: var(--ink); color: var(--bg); }
+.seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Touch screens: every control at least 44px tall (WCAG 2.5.5). */
+@media (pointer: coarse) {
+  .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
+  .btn.small { padding: 10px 14px; }
+  .btn.link { display: inline-flex; align-items: center; }
+  input[type="checkbox"] { width: 22px; height: 22px; }
+  .priv, .check { min-height: 44px; align-items: center; }
+}
 .foot a { display: inline-block; padding: 4px 2px; }
 .book-row select { min-height: 42px; }
 .check + .help { padding-left: 28px; margin-top: -4px; }
@@ -453,7 +486,7 @@ const PROJECTS = [
   { id: 'all', name: 'Everything', cls: 'b-all' },
   { id: 'home', name: 'Home', cls: 'b-home', c: 'var(--ocean)' },
   { id: 'money', name: 'Money', cls: 'b-money', c: 'var(--sage)' },
-  { id: 'kids', name: 'Kids', cls: 'b-kids', c: 'var(--astronaut)' },
+  { id: 'kids', name: 'Kids', cls: 'b-kids', c: 'var(--moss)' },
   { id: 'weekend', name: 'Weekend', cls: 'b-weekend', c: 'var(--brown)' },
   { id: 'us', name: 'Us', cls: 'b-us', c: 'var(--plum)' },
   { id: 'mine', name: 'Just mine', cls: 'b-mine' }
@@ -503,6 +536,16 @@ try {
 const devNotifyOn = () => { try { return localStorage.getItem('amp.devnotify') === '1' && 'Notification' in window && Notification.permission === 'granted'; } catch (e) { return false; } };
 /* On touch keyboards Return makes a new line and the Add button adds; with a real keyboard Enter adds. */
 const touchFirst = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
+/* Theme: 'system' (follow the device), 'light' or 'dark'; remembered on this device. */
+const themeChoice = () => { try { const t = localStorage.getItem('amp.theme'); return t === 'light' || t === 'dark' ? t : 'system'; } catch (e) { return 'system'; } };
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme');
+  try { if (t === 'system') localStorage.removeItem('amp.theme'); else localStorage.setItem('amp.theme', t); } catch (e) {}
+  // Browser chrome colour follows the choice; "system" restores the per-scheme values.
+  const metas = document.querySelectorAll('meta[name="theme-color"]');
+  metas.forEach(m => m.setAttribute('content', t === 'dark' ? '#221813' : t === 'light' ? '#efe5d8' : (/dark/.test(m.media) ? '#221813' : '#efe5d8')));
+}
 let channel = null;
 /* Ids removed locally whose delete is still waiting out its Undo window. Refetches must not bring them back. */
 const pendingRemoval = new Set();
@@ -697,6 +740,7 @@ function renderError() {
 function shell() {
   if ($('#app')) return;
   $('#root').innerHTML = `<div class="wrap" id="app">
+  <a class="skip" href="#list" data-act="skip">Skip to your tasks</a>
   <header class="top">${brand}
     <div class="who"><span class="me-chip" id="meChip"></span><button type="button" class="btn link" data-act="settings" aria-haspopup="dialog">Settings</button><button type="button" class="btn link" data-act="signout">Sign out</button></div>
   </header>
@@ -727,7 +771,7 @@ function shell() {
   <div class="summary" id="summary"></div>
   <div class="main" id="mainGrid">
     <nav class="bands" id="bands" aria-label="Projects"></nav>
-    <section class="list" id="list" aria-label="Tasks"></section>
+    <section class="list" id="list" aria-label="Tasks" tabindex="-1"></section>
   </div>
   </main>
   <footer class="foot" id="foot"></footer>
@@ -772,6 +816,12 @@ function renderSettings() {
     ${emailNote}
     <label class="check"><input type="checkbox" id="setDev" data-act="setdev" ${devOn && perm === 'granted' ? 'checked' : ''} ${canNotify && perm !== 'denied' ? '' : 'disabled aria-describedby="setDevNote"'}> Notify me on this device while Ampersand is open in another tab</label>
     ${!canNotify ? '<p class="help" id="setDevNote">This browser doesn’t support notifications.</p>' : perm === 'denied' ? '<p class="help" id="setDevNote">Notifications are blocked for this site. Allow them in your browser’s site settings to use this.</p>' : ''}
+  </section>
+  <section class="set-sec" aria-labelledby="setLook">
+    <h3 id="setLook">Appearance</h3>
+    <div class="seg-radio" role="radiogroup" aria-labelledby="setLook">
+      ${[['system', 'Match device'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<label class="seg-opt"><input type="radio" name="theme" value="${v}" data-act="settheme" ${themeChoice() === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+    </div>
   </section>
   <section class="set-sec" aria-labelledby="setBase">
     <h3 id="setBase">Home base</h3>
@@ -1574,6 +1624,8 @@ document.addEventListener('click', async e => {
     }
     if (act === 'settings') { renderSettings(); const d = $('#settings'); if (d && !d.open) d.showModal(); return; }
     if (act === 'closesettings') { const d = $('#settings'); if (d) d.close(); return; }
+    if (act === 'settheme') { applyTheme(b.value); toast(b.value === 'system' ? 'Appearance follows your device.' : `${b.value === 'dark' ? 'Dark' : 'Light'} appearance on.`); return; }
+    if (act === 'skip') { e.preventDefault(); const l = $('#list'); if (l) { l.focus(); l.scrollIntoView({ block: 'start' }); } return; }
     if (act === 'setemail') {
       const on = b.checked;
       const { error } = await sb.from('members').update({ notify_email: on }).eq('user_id', state.uid);
