@@ -1,7 +1,9 @@
 // Ampersand agent: sorts spoken to-dos into tasks and researches options.
 // Runs with the caller's session, so row-level security decides what it can read and write.
-// It never touches private_items.
+// It never touches private_items. Research also reads both people's free/busy times, which needs the
+// service role (calendar_connections is closed to signed-in users); that client is made only for that.
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { addDays, busyLines, daysBetween, householdBusy, isTz, localInterval, overlapsAny, zonedToUtc, type Busy } from "../_shared/calendar.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +55,36 @@ const rid = () => "o" + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
 function addLog(log: unknown, text: string) {
   const arr = Array.isArray(log) ? log : [];
   return [...arr, { at: Date.now(), who: "agent", text }].slice(-40);
+}
+
+const CALENDAR_TIMEOUT_MS = 12000;
+const CALENDAR_MAX_DAYS = 62;
+
+// Both people's busy times from today to the deadline (or 30 days out), for research. Returns null when
+// calendars aren't set up or nobody's calendar could be checked. Never throws: a calendar problem must not
+// stop research, it just means research goes ahead without the check.
+// deno-lint-ignore no-explicit-any
+async function researchBusy(sb: any, householdId: string, today: string, due: unknown, clientTz: unknown):
+  Promise<{ busy: Busy[]; tz: string } | null> {
+  try {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!serviceKey || !Deno.env.get("CALENDAR_TOKEN_KEY")) return null;
+    const { data: hh, error } = await sb.from("households").select("timezone").eq("id", householdId).maybeSingle();
+    const tz = !error && isTz(hh?.timezone) ? hh!.timezone : isTz(clientTz) ? clientTz : "UTC";
+    let end = typeof due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(due) && due >= today ? due : addDays(today, 30);
+    if (daysBetween(today, end) + 1 > CALENDAR_MAX_DAYS) end = addDays(today, CALENDAR_MAX_DAYS - 1);
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    // The catch matters: if the timeout wins, a later rejection must not go unhandled.
+    const work = householdBusy(admin, householdId, new Date(zonedToUtc(today, "00:00", tz)).toISOString(),
+      new Date(zonedToUtc(addDays(end, 1), "00:00", tz)).toISOString()).catch(() => null);
+    let timer: number | undefined;
+    const timeout = new Promise<null>((res) => { timer = setTimeout(() => res(null), CALENDAR_TIMEOUT_MS); });
+    const hb = await Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+    if (!hb || !Object.values(hb.checked).some(Boolean)) return null;
+    return { busy: hb.busy.map((b) => ({ start: b.start, end: b.end })), tz };
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -121,11 +153,16 @@ Input: """${text.replace(/"""/g, '"')}"""`;
       const log1 = addLog(t.log, "Started researching options.");
       const { error: startErr } = await sb.from("tasks").update({ status: "researching", research_at: new Date().toISOString(), log: log1 }).eq("id", t.id);
       if (startErr) return json({ error: "db_error", detail: startErr.message }, 500);
+      const cal = await researchBusy(sb, me.household_id, today, t.due, body.tz);
+      const calLines = cal ? busyLines(cal.busy, cal.tz) : [];
+      const calendarLine = !cal ? "" : calLines.length
+        ? `\nTheir calendars show these busy times (local time, ${cal.tz}). Avoid these times; both people must be free: ${calLines.join("; ")}.`
+        : `\nTheir calendars show no busy times before the deadline.`;
       try {
         const prompt = `You are the research agent in a couple's shared household app. Find exactly 3 concrete options for this task so each of them can say yes to one. ${todayLine} Home base: ${homeBase}.
 Task: "${t.title}". Project: ${t.project}. ${t.due ? `Needed by ${t.due} (${t.due_reason || "their deadline"}).` : "No deadline given."} ${t.budget_cents ? `Budget: under $${(t.budget_cents / 100).toFixed(2)} all-in.` : ""}
 Use web search to find real providers near ${homeBase} and their published prices where available. Only name a business you actually found; include the page you found it on as "url". If a price isn't published, estimate it and set "priceIsEstimate": true. Never invent phone numbers or addresses.
-Each option needs exact terms the couple will approve: a specific date after today and on or before the deadline (YYYY-MM-DD), a start and end time (HH:MM, 24-hour; for a purchase, the delivery window), and an all-in total in cents including tax, fees and tip.
+Each option needs exact terms the couple will approve: a specific date after today and on or before the deadline (YYYY-MM-DD), a start and end time (HH:MM, 24-hour; for a purchase, the delivery window), and an all-in total in cents including tax, fees and tip.${calendarLine}
 Finish with JSON only, no prose after it: {"note":"one plain sentence for the couple","options":[{"vendor":"","title":"","detail":"one sentence on why this one","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","totalCents":0,"includes":"short list","url":"https://...","priceIsEstimate":true}]}`;
         const out = extractJSON((await callClaude(key, RESEARCH_MODEL, prompt, 4000, true)).text);
         const raw = Array.isArray(out?.options) ? (out!.options as Record<string, unknown>[]) : [];
@@ -140,13 +177,23 @@ Finish with JSON only, no prose after it: {"note":"one plain sentence for the co
           };
         }).filter((o) => o.title && isDay(o.date) && o.date > today && isTime(o.start) && isTime(o.end) && Number.isFinite(o.totalCents) && o.totalCents > 0);
         if (!options.length) throw new Error("no usable options");
+        // Drop options that clash with either person's calendar. If every one clashes, keep them and say so.
+        let conflict = false;
+        let kept: (typeof options[number] & { conflict?: boolean })[] = options;
+        if (cal && cal.busy.length) {
+          const clashes = (o: typeof options[number]) => { const iv = localInterval(o, cal.tz); return !!iv && overlapsAny(iv, cal.busy); };
+          const free = options.filter((o) => !clashes(o));
+          if (free.length) kept = free;
+          else { conflict = true; kept = options.map((o) => ({ ...o, conflict: true })); }
+        }
+        const baseNote = String(out?.note || "Here are three options. Prices are checked again before anything is booked.").slice(0, 300);
         const { error: saveErr } = await sb.from("tasks").update({
-          status: "open", options, research: false,
-          agent_note: String(out?.note || "Here are three options. Prices are checked again before anything is booked.").slice(0, 300),
-          log: addLog(log1, `Found ${options.length} options. Each of you can say yes to one.`),
+          status: "open", options: kept, research: false,
+          agent_note: conflict ? `${baseNote.slice(0, 220)} Heads up: every option clashes with one of your calendars.` : baseNote,
+          log: addLog(log1, `Found ${kept.length} options. Each of you can say yes to one.`),
         }).eq("id", t.id);
         if (saveErr) throw new Error(`could not save options: ${saveErr.message}`);
-        return json({ ok: true, count: options.length });
+        return json(conflict ? { ok: true, count: kept.length, conflict: true } : { ok: true, count: kept.length });
       } catch (e) {
         const { error: resetErr } = await sb.from("tasks").update({ status: "open", agent_note: "The agent couldn't finish this one. Try again in a minute.", log: addLog(log1, "Research stopped before finishing.") }).eq("id", t.id);
         const detail = String((e as Error).message || e).slice(0, 300) + (resetErr ? ` (also could not reset the task: ${resetErr.message}; the app treats it as open after 4 minutes)` : "");
