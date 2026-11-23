@@ -355,11 +355,18 @@ details.hist .who-agent { color: var(--agent); }
 .t-main { min-width: 0; }
 .t-side { display: grid; justify-items: end; gap: 2px; flex: none; }
 .edit-btn { min-height: 32px; padding: 4px 2px; font-size: 13px; }
+.t-side { gap: 0; }
+.task h3, .privcard .txt, .opt-title, .done-item span { overflow-wrap: anywhere; }
+.privcard .txt { min-width: 0; }
+/* Narrow screens: let the status pill drop under a long title instead of squeezing it. */
+@media (max-width: 600px) { .t-top { flex-wrap: wrap; } .t-main { flex: 1 1 220px; } .t-side { justify-items: start; grid-auto-flow: column; align-items: center; gap: 10px; } }
 
 /* Inline task editor */
-.editbox { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px 14px; padding: 14px; border-radius: 14px;
-  background: var(--bg); border: 1px solid var(--field-border); }
+.editbox { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 12px 14px; padding: 14px; border-radius: 14px;
+  background: var(--bg); border: 1px solid var(--line); }
 .editbox .wide { grid-column: 1 / -1; }
+.editbox .field { min-width: 0; }
+.editbox input[type="date"] { min-width: 0; max-width: 100%; }
 .editbox .field input, .editbox .field select { width: 100%; border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 11px; background: var(--surface); min-height: 42px; }
 .editbox .field input[aria-invalid="true"] { border-color: var(--changed); box-shadow: 0 0 0 1px var(--changed); }
 .editbox .err:empty { display: none; }
@@ -369,16 +376,27 @@ details.hist .who-agent { color: var(--agent); }
 .opt-detail.why { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .opt.open .opt-detail.why { display: block; }
 .opt-more { display: grid; gap: 6px; }
-.opt-actions { align-items: center; flex-wrap: wrap; }
+.opt-actions { align-items: center; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
 .opt-foot > span:empty { display: none; }
 .opt-foot:has(> span:empty) { justify-content: flex-end; }
-details.others { border-top: 1px dashed var(--line); padding-top: 4px; }
+details.others { border-top: 0; padding-top: 0; }
 details.others > summary { cursor: pointer; color: var(--muted); font-size: 13.5px; font-weight: 600; padding: 8px 0; }
 details.others > summary:hover { color: var(--ink); }
 details.others[open] > summary { margin-bottom: 8px; }
 
 /* First run: the add box and two clear steps lead; no empty swatches to filter */
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
+.main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.foot:empty { display: none; }
+.foot a { display: inline-block; padding: 4px 2px; }
+.book-row select { min-height: 42px; }
+.check + .help { padding-left: 28px; margin-top: -4px; }
+@media (max-width: 600px) {
+  .sheet-head { position: sticky; }
+  .sheet-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line); }
+  /* The agreed box explains the re-check at booking, so the per-card tag is noise on small screens. */
+  .opt-head .tag.price { display: none; }
+}
 .empty.first { border-style: solid; background: var(--surface); }
 .steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; color: var(--muted); max-width: 62ch; }
 .steps strong { color: var(--ink); font-weight: 600; }
@@ -714,7 +732,7 @@ function shell() {
   </main>
   <footer class="foot" id="foot"></footer>
 </div>
-<dialog class="sheet" id="settings" aria-labelledby="setTitle">
+<dialog class="sheet" id="settings" aria-labelledby="setTitle" closedby="any">
   <div class="sheet-head"><h2 id="setTitle">Settings</h2><button type="button" class="btn link" data-act="closesettings" aria-label="Close settings">Close</button></div>
   <div id="setBody"></div>
   <p class="help set-status" id="setStatus" role="status" aria-live="polite"></p>
@@ -728,6 +746,8 @@ function shell() {
   });
   $('#priv').addEventListener('change', updatePrivUI);
   $('#settings').addEventListener('close', () => { const b = $('[data-act="settings"]'); if (b) b.focus(); });
+  // Tapping the backdrop closes the sheet (closedby="any" does this natively where supported).
+  $('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 }
 
 function renderSettings() {
@@ -740,7 +760,7 @@ function renderSettings() {
   let devOn = false; try { devOn = localStorage.getItem('amp.devnotify') === '1'; } catch (e) {}
   const perm = canNotify ? Notification.permission : 'unsupported';
   const emailNote = state.emailOn === false
-    ? `<p class="help">Email nudges aren't switched on for this app yet, so none will be sent.${DEMO ? ' To switch them on, save <code>RESEND_API_KEY</code> and <code>NOTIFY_FROM</code> in Supabase → Edge Functions → Secrets.' : ''}</p>` : '';
+    ? `<p class="help" id="setEmailNote">Email nudges aren't switched on for this app yet, so none will be sent.${DEMO ? ' To switch them on, save <code>RESEND_API_KEY</code> and <code>NOTIFY_FROM</code> in Supabase → Edge Functions → Secrets.' : ''}</p>` : '';
   body.innerHTML = `
   <section class="set-sec" aria-labelledby="setYou">
     <h3 id="setYou">You</h3>
@@ -748,10 +768,10 @@ function renderSettings() {
   </section>
   <section class="set-sec" aria-labelledby="setNudge">
     <h3 id="setNudge">Nudges</h3>
-    <label class="check"><input type="checkbox" id="setEmail" data-act="setemail" ${emailOn ? 'checked' : ''}> Email me when ${pname} says yes to something, or the agent finds options</label>
+    <label class="check"><input type="checkbox" id="setEmail" data-act="setemail" ${emailOn && state.emailOn !== false ? 'checked' : ''} ${state.emailOn === false ? 'disabled aria-describedby="setEmailNote"' : ''}> Email me when ${pname} says yes to something, or the agent finds options</label>
     ${emailNote}
-    <label class="check"><input type="checkbox" id="setDev" data-act="setdev" ${devOn && perm === 'granted' ? 'checked' : ''} ${canNotify && perm !== 'denied' ? '' : 'disabled'}> Notify me on this device while Ampersand is open in another tab</label>
-    ${!canNotify ? '<p class="help">This browser doesn’t support notifications.</p>' : perm === 'denied' ? '<p class="help">Notifications are blocked for this site. Allow them in your browser’s site settings to use this.</p>' : ''}
+    <label class="check"><input type="checkbox" id="setDev" data-act="setdev" ${devOn && perm === 'granted' ? 'checked' : ''} ${canNotify && perm !== 'denied' ? '' : 'disabled aria-describedby="setDevNote"'}> Notify me on this device while Ampersand is open in another tab</label>
+    ${!canNotify ? '<p class="help" id="setDevNote">This browser doesn’t support notifications.</p>' : perm === 'denied' ? '<p class="help" id="setDevNote">Notifications are blocked for this site. Allow them in your browser’s site settings to use this.</p>' : ''}
   </section>
   <section class="set-sec" aria-labelledby="setBase">
     <h3 id="setBase">Home base</h3>
@@ -846,8 +866,8 @@ function renderOption(t, o, ap) {
   const staleFor = state.members.filter(m => ap[m.user_id] && ap[m.user_id].yes_option_id === o.id && ap[m.user_id].yes_hash !== termsHash(o)).map(m => m.display_name);
   const tag = o.requoted ? '<span class="tag re">Re-quoted at booking</span>'
     : o.source === 'example' ? '<span class="tag">Example</span>'
-    : o.priceIsEstimate ? '<span class="tag">Price estimated · re-checked at booking</span>'
-    : '<span class="tag">Listed price · re-checked at booking</span>';
+    : o.priceIsEstimate ? '<span class="tag price">Price estimated · re-checked at booking</span>'
+    : '<span class="tag price">Listed price · re-checked at booking</span>';
   const tid = esc(`ot-${t.id}-${o.id}`);
   const ctx = `data-task="${t.id}" data-opt="${esc(o.id)}" aria-describedby="${tid}"`;
   const actions = isMine
@@ -859,7 +879,7 @@ function renderOption(t, o, ap) {
   // Votes only appear once someone has said yes to or passed on this option; until then they're just noise.
   const acted = [uid, p && p.user_id].filter(Boolean).some(u => { const y = validYes(t, ap, u); return (y && y.id === o.id) || (ap[u] && (ap[u].passed || []).includes(o.id)); });
   const votes = acted ? `<div class="votes">${voteChip(uid, o, ap, t)}${p ? voteChip(p.user_id, o, ap, t) : ''}</div>` : '<span></span>';
-  // Compact by default: the "why" is one line; what's included and the source open on tap.
+  // Compact by default: the "why" is clamped to two lines; what's included and the source open on tap.
   const key = `${t.id}:${o.id}`, open = state.expanded.has(key);
   const hasMore = !!(o.includes || o.url || (o.detail && o.detail.length > 70));
   const moreId = esc(`om-${t.id}-${o.id}`);
@@ -874,7 +894,7 @@ function renderOption(t, o, ap) {
     </div>` : ''}
     ${was}
     ${staleFor.length ? `<p class="stale">These terms changed after ${esc(staleFor.join(' and '))} said yes, so that yes no longer counts.</p>` : ''}
-    <div class="opt-foot">${votes}<div class="opt-actions">${hasMore ? `<button type="button" class="btn link" data-act="optmore" ${ctx} aria-expanded="${open}" aria-controls="${moreId}">${open ? 'Less' : 'Details'}</button>` : ''}${actions}</div></div>
+    <div class="opt-foot">${votes}<div class="opt-actions">${hasMore ? `<button type="button" class="btn link" data-act="optmore" ${ctx} aria-expanded="${open}" aria-controls="${moreId}">Details</button>` : ''}${actions}</div></div>
   </li>`;
 }
 
@@ -883,7 +903,8 @@ function renderAgreed(t, s) {
   const nd = addDays(parseDay(o.date), 1);
   return `<div class="agreebox ${state.fresh.has(t.id) ? 'fresh' : ''}">
     <div class="join" aria-hidden="true"><span class="sw c-blue"></span><span class="sw c-orange"></span><span class="amp-mini">&amp;</span></div>
-    <p><strong>${esc(mm.display_name)} and ${esc(p.display_name)} both said yes</strong> to ${esc(o.vendor)}: ${esc(fmtDay(o.date))}, ${esc(fmtWindow(o))}, ${esc(money(o.totalCents))} all-in.</p>
+    <p><strong>${esc(mm.display_name)} and ${esc(p.display_name)} both said yes</strong> to ${esc(o.title)} from ${esc(o.vendor)}: ${esc(fmtDay(o.date))}, ${esc(fmtWindow(o))}, ${esc(money(o.totalCents))} all-in.</p>
+    ${o.includes ? `<p class="small">Includes: ${esc(o.includes)}</p>` : ''}
     <p class="small">Before booking, the server re-checks the live date, time, vendor, what's included and the all-in price. If any of it differs from what you both approved, it won't book and will ask you both again. Payment is capped at ${esc(money(o.totalCents))}.</p>
     ${s.checking ? `<div class="agent-line busy">re-checking live terms with the vendor…</div>` : `
     <div class="book-row">
@@ -968,7 +989,7 @@ function renderTask(t) {
   const canEdit = t.status !== 'booked' && t.status !== 'done';
   return `<article class="task k-${s.key} ${editing ? 'editing' : ''}" data-id="${t.id}" style="--c:${proj.c || 'var(--sand)'}">
     <div class="t-top"><div class="t-main"><div class="t-meta">${meta}</div><h3 id="tt-${t.id}" tabindex="-1">${esc(t.title)}</h3></div>
-      <div class="t-side"><span class="status ${s.key}">${esc(s.label)}</span>${canEdit && !editing ? `<button type="button" class="btn link edit-btn" data-act="edit" ${tctx} aria-expanded="false">Edit</button>` : ''}</div></div>
+      <div class="t-side"><span class="status ${s.key}">${esc(s.label)}</span>${canEdit && !editing ? `<button type="button" class="btn link edit-btn" data-act="edit" data-task="${t.id}" aria-label="Edit ${esc(t.title)}">Edit</button>` : ''}</div></div>
     ${editing ? renderEdit(t) : ''}
     ${body}
     <div class="t-foot"><div class="t-actions">${acts.join('')}</div>
@@ -987,12 +1008,12 @@ function renderEdit(t) {
   if (p) who.push(opt(p.user_id, p.display_name, d.assignee || ''));
   if (d.assignee && !state.members.some(m => m.user_id === d.assignee)) who.push(opt(d.assignee, 'Someone who left', d.assignee));
   const f = `ed-${t.id}`;
-  return `<form class="editbox" data-edit="${t.id}" novalidate aria-label="Edit task">
-    <div class="field wide"><label for="${f}-title">Task</label><input id="${f}-title" name="title" value="${esc(d.title)}" maxlength="200" required data-autofocus-edit></div>
+  return `<form class="editbox" data-edit="${t.id}" novalidate aria-label="Edit: ${esc(t.title)}">
+    <div class="field wide"><label for="${f}-title">Task</label><input id="${f}-title" name="title" value="${esc(d.title)}" maxlength="200" required data-autofocus-edit aria-describedby="${f}-err"></div>
     <div class="field"><label for="${f}-project">Project</label><select id="${f}-project" name="project">${PROJ_IDS.map(id => opt(id, PROJECTS.find(x => x.id === id).name, d.project)).join('')}</select></div>
     <div class="field"><label for="${f}-who">Who's on it</label><select id="${f}-who" name="assignee">${who.join('')}</select></div>
-    <div class="field"><label for="${f}-due">Due</label><input id="${f}-due" name="due" type="date" value="${esc(d.due || '')}"></div>
-    <div class="field"><label for="${f}-budget">Budget (all-in, $)</label><input id="${f}-budget" name="budget" inputmode="decimal" value="${esc(d.budget)}" placeholder="No budget" maxlength="10"></div>
+    <div class="field"><label for="${f}-due">Due</label><input id="${f}-due" name="due" type="date" value="${esc(d.due || '')}" aria-describedby="${f}-err"></div>
+    <div class="field"><label for="${f}-budget">Budget (all-in, $)</label><input id="${f}-budget" name="budget" inputmode="decimal" value="${esc(d.budget)}" placeholder="No budget" maxlength="10" aria-describedby="${f}-err"></div>
     <div class="field wide"><label for="${f}-reason">Why that date <span class="opt-label">(optional)</span></label><input id="${f}-reason" name="due_reason" value="${esc(d.due_reason || '')}" maxlength="60" placeholder="e.g. before the leaves drop"></div>
     <p class="err wide" id="${f}-err" role="alert"></p>
     <div class="row wide"><button type="submit" class="btn small">Save changes</button><button type="button" class="btn ghost small" data-act="canceledit" data-task="${t.id}">Cancel</button></div>
@@ -1036,7 +1057,7 @@ function renderList() {
       html += `<div class="empty first"><p class="big">Start with one thing on your mind.</p>
         <ol class="steps">
           <li><strong>Say it in the box above,</strong> loosely, several things at once if you like. The agent sorts them into projects, works out deadlines and finds real options.</li>
-          <li>${p ? `<strong>${esc(p.display_name)} is already here.</strong>` : '<strong>Invite your partner</strong> with the link below.'} You each say yes to an option; nothing is booked until you both agree on the same one.</li>
+          <li>${p ? `<strong>${esc(p.display_name)} is already here.</strong>` : '<strong>Invite your partner</strong> with the link above.'} You each say yes to an option; nothing is booked until you both agree on the same one.</li>
         </ol>
         <button type="button" class="btn ghost small" data-act="examples">Or add three example tasks to try it</button></div>`;
     } else if (f === 'mine') {
@@ -1140,12 +1161,22 @@ function render() {
         if (k === 'needs' || k === 'split' || k === 'agreed') alerts.push(`${getTask(id).title}: ${label}`);
       }
     }
+    // A partner's new yes matters even when my own status doesn't change ("Needs you" before and after).
+    const pp = partner();
+    if (pp && state.prevPartnerYes) for (const t of state.tasks) {
+      if (t.status === 'done') continue;
+      const y = validYes(t, approvalsFor(t.id), pp.user_id);
+      const was = state.prevPartnerYes.get(t.id);
+      if (y && y.id !== was && !alerts.some(a => a.startsWith(t.title + ':'))) alerts.push(`${t.title}: ${pp.display_name} said yes to ${y.vendor}`);
+    }
     if (msgs.length) announce(msgs.slice(0, 3).join('. '));
     if (alerts.length && document.hidden && devNotifyOn()) {
       try { new Notification('Ampersand', { body: alerts.slice(0, 3).join('\n'), tag: 'ampersand-status' }); } catch (e) {}
     }
   }
   state.prevLabels = labels;
+  const pp2 = partner();
+  state.prevPartnerYes = new Map(pp2 ? state.tasks.map(t => { const y = validYes(t, approvalsFor(t.id), pp2.user_id); return [t.id, y ? y.id : null]; }) : []);
   const openDetails = new Set([...document.querySelectorAll('details.hist[open]')].map(d => d.closest('.task') && d.closest('.task').dataset.id));
   const openOthers = new Set([...document.querySelectorAll('details.others[open]')].map(d => d.dataset.others));
   readEditDraft();
@@ -1605,6 +1636,8 @@ document.addEventListener('submit', async e => {
   const t = getTask(form.dataset.edit);
   if (!t) { closeEdit(); return; }
   const errEl = form.querySelector('.err');
+  errEl.textContent = '';
+  form.querySelectorAll('[aria-invalid]').forEach(x => x.removeAttribute('aria-invalid'));
   const v = n => (form.elements[n].value || '').trim();
   const title = v('title');
   if (!title) { errEl.textContent = 'Give the task a name.'; form.elements.title.setAttribute('aria-invalid', 'true'); form.elements.title.focus(); return; }
@@ -1616,7 +1649,7 @@ document.addEventListener('submit', async e => {
     budget = Math.round(n * 100);
   }
   const due = v('due');
-  if (due && !parseDay(due)) { errEl.textContent = 'Pick a valid date, or leave it empty.'; form.elements.due.focus(); return; }
+  if (due && !parseDay(due)) { errEl.textContent = 'Pick a valid date, or leave it empty.'; form.elements.due.setAttribute('aria-invalid', 'true'); form.elements.due.focus(); return; }
   const next = { title: title.slice(0, 200), project: PROJ_IDS.includes(v('project')) ? v('project') : t.project, assignee: v('assignee') || null, due: due || null, due_reason: v('due_reason').slice(0, 60) || null, budget_cents: budget };
   const labels = { title: 'name', project: 'project', assignee: 'who', due: 'due date', due_reason: 'reason for the date', budget_cents: 'budget' };
   const patch = {}, changed = [];
