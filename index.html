@@ -1687,7 +1687,7 @@ async function research(taskId) {
   state.tasks[i] = Object.assign({}, t, { status: 'researching', research_at: new Date().toISOString() });
   render();
   try {
-    const r = await agent('research', { taskId });
+    const r = await agent('research', { taskId, tz: householdTz() });
     if (r && r.ok && r.count > 0) nudge('options', taskId);
   }
   catch (e) {

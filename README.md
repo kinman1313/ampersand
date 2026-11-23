@@ -12,6 +12,7 @@ Live: https://www.ourampersand.app
 | Database | `supabase/migrations/` | Households of two, tasks, per-person approvals, private lists, row-level security, and the booking check. |
 | Agent | `supabase/functions/agent/` | Edge function that calls Claude to sort spoken to-dos into tasks and to research options with live web search. |
 | Nudges | `supabase/functions/notify/` | Edge function that emails your partner (through Resend) when you said yes to an option or the agent found options. Throttled to one per task and kind every 6 hours, and 20 a day per person. Each person can turn them off (`members.notify_email`). |
+| Calendars | `supabase/functions/calendar/`, `calendar-callback/`, `_shared/calendar.ts` | Each person can connect a Google and/or Outlook calendar. Research avoids times either of you is busy, and a booking is added to the calendar of each person who opted in. Only free/busy times cross between partners; event details are never read. Tokens are encrypted at rest and never reach the browser. |
 
 Hosting: Vercel serves `index.html` as a static site. Supabase project: `ampersand` (`dmtgdhjcpjiqcrwfqscl`).
 
@@ -29,6 +30,37 @@ Until real vendor connections exist, the "live" answer is simulated by the `p_sc
 - Each person can only write their own approvals.
 - `private_items` are readable only by the person who wrote them, and the agent never queries that table.
 - The notify function reads tasks, approvals and members with the caller's session. It uses the service role only to look up the partner's email address and to read and write `notify_log`, which no signed-in user can read. Emails never include private items.
+
+## Calendars
+
+Only free/busy intervals are read; titles and details of events are never requested or stored. Refresh tokens are encrypted (AES-GCM) with `CALENDAR_TOKEN_KEY` and live in `calendar_connections`, which only the edge functions (service role) can read. Connecting is two steps: the provider sends the browser to `calendar-callback`, which parks the encrypted tokens in `calendar_pending` for 10 minutes and returns to the app with `?calendar=pending&k=…`; the app then calls `calendar` → `finish`, which connects the calendar only if the signed-in person is the one who started. That stops anyone attaching someone else's calendar to their own account.
+
+Redirect URI for both providers: `https://dmtgdhjcpjiqcrwfqscl.supabase.co/functions/v1/calendar-callback`
+
+**Google** (console.cloud.google.com):
+1. Create a project (top bar → project picker → New project).
+2. APIs & Services → Library → Google Calendar API → Enable.
+3. APIs & Services → OAuth consent screen (Google Auth Platform): User type **External**; app name, support email, developer email. Leave publishing status on **Testing**.
+4. Audience → Test users → add both people's Google addresses. (In Testing mode only these accounts can connect, and Google expires their consent after 7 days; publish the app, which needs Google's verification for calendar scopes, to avoid reconnecting weekly.)
+5. Data access → Add or remove scopes → add `openid`, `.../auth/userinfo.email`, `https://www.googleapis.com/auth/calendar.freebusy` and `https://www.googleapis.com/auth/calendar.events`.
+6. Credentials (Clients) → Create credentials → OAuth client ID → Application type **Web application** → Authorized redirect URIs → add the redirect URI above → Create. Copy the client ID and secret.
+
+**Microsoft** (entra.microsoft.com):
+1. Identity → Applications → App registrations → New registration. Name: Ampersand. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**.
+2. Redirect URI: platform **Web**, the redirect URI above → Register. Copy the Application (client) ID.
+3. Certificates & secrets → Client secrets → New client secret. Copy the **Value** now (it is shown once) and note its expiry date: connections stop refreshing when it expires.
+4. API permissions → Add a permission → Microsoft Graph → Delegated permissions: `Calendars.ReadWrite`, `User.Read`, `offline_access`, `openid`, `email` → Add permissions.
+
+**Secrets** (Supabase → Edge Functions → Secrets): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `APP_URL` (`https://www.ourampersand.app`; the app is only ever sent back to this site or localhost), and `CALENDAR_TOKEN_KEY` from `openssl rand -base64 32`. Changing or losing `CALENDAR_TOKEN_KEY` means everyone has to connect again. A provider shows as available only when its ID, secret and the key are all set.
+
+**Deploy**:
+```
+supabase db push        # applies 20261124000000_ampersand_calendar.sql; apply ..._000001_ampersand_calendar_indexes.sql on its own (concurrent indexes)
+supabase functions deploy calendar
+supabase functions deploy calendar-callback --no-verify-jwt
+supabase functions deploy agent
+```
+`calendar-callback` has no Supabase session (the browser arrives from Google or Microsoft); it trusts only the HMAC-signed state and answers with a redirect carrying a short fixed code, never provider text.
 
 ## Settings that live outside this repo
 
@@ -60,6 +92,7 @@ The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersan
 - App: push to `main`; Vercel redeploys.
 - Database: apply new files in `supabase/migrations/` (Supabase CLI: `supabase db push`).
 - Agent: `supabase functions deploy agent`.
+- Calendars: see [Calendars](#calendars).
 - Nudges: apply `20261123000000_ampersand_notify.sql`, then `20261123000001_ampersand_notify_indexes.sql` on its own (it builds indexes concurrently), set the secrets above, then `supabase functions deploy notify`.
 
 ## Tests
@@ -68,4 +101,6 @@ The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersan
 
 `sh tests/run-notify-tests.sh` runs the notify function against a fake database, fake auth and a fake Resend API: sending, the agreed case, stale or missing yeses, no partner, opted out, throttling, the daily cap, email not configured, Resend failures, a failed log write, database errors, bad input, HTML escaping and the status check.
 
-Both suites: `sh tests/run-agent-tests.sh && sh tests/run-notify-tests.sh`
+`sh tests/run-calendar-tests.sh` runs the calendar and calendar-callback functions, the agent's calendar check and `_shared/calendar.ts` against a fake database and fake Google, Microsoft and Claude APIs: status (no partner email), connect, the callback and `finish` (including someone else finishing, expiry and replay), busy merging and parsing, token refresh and revocation, add_event idempotency and partial failure, time zone maths across DST changes, encryption and state tampering.
+
+All suites: `sh tests/run-agent-tests.sh && sh tests/run-notify-tests.sh && sh tests/run-calendar-tests.sh`
