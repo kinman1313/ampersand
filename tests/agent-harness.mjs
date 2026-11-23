@@ -80,3 +80,4 @@ check('status reports agent off without key', r.status === 200 && r.body.configu
 r = await call({ action: 'research', taskId: 't1' });
 check('research without key: 503 agent_not_configured', r.status === 503, r);
 console.log(`${results.filter(Boolean).length}/${results.length} passed`);
+if (results.some(r => !r)) process.exitCode = 1; // let `&&` chains and CI see a failure
