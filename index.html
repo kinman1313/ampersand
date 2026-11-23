@@ -534,8 +534,12 @@ const CAL_RESULT = (() => {
   try {
     const q = new URLSearchParams(location.search), r = q.get('calendar');
     if (!r) return null;
-    const out = { ok: r === 'connected', provider: q.get('provider') === 'microsoft' ? 'microsoft' : 'google', reason: q.get('reason') || '' };
-    const u = new URL(location.href); ['calendar', 'provider', 'reason'].forEach(k => u.searchParams.delete(k));
+    // "pending" carries a one-time key: the connection only completes when this signed-in person confirms it
+    // (so a consent link started by someone else can't attach your calendar to their account).
+    const k = q.get('k');
+    const out = { ok: r === 'connected', pending: r === 'pending' && k && /^[A-Za-z0-9_-]{20,100}$/.test(k) ? k : null,
+      provider: q.get('provider') === 'microsoft' ? 'microsoft' : 'google', reason: q.get('reason') || '' };
+    const u = new URL(location.href); ['calendar', 'provider', 'reason', 'k'].forEach(x => u.searchParams.delete(x));
     history.replaceState(history.state, '', u.pathname + u.search + u.hash);
     return out;
   } catch (e) { return null; }
@@ -2216,7 +2220,14 @@ async function enterApp() {
   if (CAL_RESULT && !cal.resultShown) {
     cal.resultShown = true;
     const name = CAL_NAMES[CAL_RESULT.provider];
-    toast(CAL_RESULT.ok ? `${name} connected. Ampersand will check it for clashes and add your bookings.`
+    const connected = () => toast(`${name} connected. Ampersand will check it for clashes and add your bookings.`);
+    if (CAL_RESULT.pending) {
+      calCall('finish', { k: CAL_RESULT.pending })
+        .then(() => { connected(); loadCalStatus(); })
+        .catch(e => toast(e.code === 'not_yours' ? `That ${name} link was started from a different account, so it wasn’t connected.`
+          : e.code === 'expired' ? `That ${name} connection took too long. Connect it again from Settings › Calendars.`
+          : `${name} couldn’t be connected. Try again from Settings › Calendars.`));
+    } else toast(CAL_RESULT.ok ? `${name} connected. Ampersand will check it for clashes and add your bookings.`
       : CAL_RESULT.reason === 'denied' ? `${name} wasn’t connected: permission wasn’t given.`
       : `${name} couldn’t be connected. Try again from Settings › Calendars.`);
   }
