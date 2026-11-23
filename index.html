@@ -420,7 +420,7 @@ details.others[open] > summary { margin-bottom: 8px; }
   font-size: 13px; font-weight: 600; min-height: 32px; min-width: 48px; border-radius: 8px; text-decoration: underline; text-underline-offset: 3px; }
 .pw-toggle:hover { color: var(--ink); }
 .set-sec .field input { border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 11px; background: var(--bg); min-height: 42px; }
-.err:empty { display: none; }
+.err:empty { min-height: 0; margin: 0; } /* stays rendered so role=alert is announced reliably */
 /* Ghost buttons (Pass, Cancel) need a border that reads as a button next to the solid ones. */
 .btn.ghost { border-color: var(--field-border); }
 /* Option header: vendor wraps, the tag stays put on the right. */
@@ -527,6 +527,14 @@ const AUTH_LINK = (() => {
     ? 'That email link has expired or was already used. Ask for a new one below.'
     : 'That email link didn’t work. Ask for a new one below.') : '' };
 })();
+if (AUTH_LINK.error) {
+  // Don't let a reload show the same link error again.
+  try {
+    const u = new URL(location.href);
+    ['error', 'error_code', 'error_description'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(history.state, '', u.pathname + u.search);
+  } catch (e) {}
+}
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true, detectSessionInUrl: true } });
 
 /* ---------- constants & helpers ---------- */
@@ -1428,6 +1436,7 @@ function friendly(e) {
   if (/pwned|breach|known to be weak|easy to guess|weak password/i.test(m)) return 'That password has shown up in a data breach. Choose a different one.';
   if (/password should (be at least|contain)|password.*(too short|at least)/i.test(m)) return `Use a longer password (at least ${MIN_PW} characters).`;
   if (/should be different|same password/i.test(m)) return 'That’s already your password. Choose a new one.';
+  if (/reauthenticat|recent(ly)? (login|sign)|nonce/i.test(m)) return 'For security, sign out and sign back in, then set your password.';
   if (/email not confirmed/i.test(m)) return 'Confirm your email first; we sent you a link.';
   if (/signups? (not allowed|disabled)/i.test(m)) return 'New accounts are turned off for this app right now.';
   if (/failed to fetch|networkerror|network request failed|load failed|err_internet|fetch failed/i.test(m) || e.name === 'AuthRetryableFetchError' || e.name === 'FunctionsFetchError' || e.code === 'network') return "Can't reach the server. Check your connection and try again.";
@@ -2017,7 +2026,7 @@ async function onSession(session, evt) {
   if (uid === currentUid) { state.session = session; return; }
   currentUid = uid;
   state.session = session; state.uid = uid;
-  if (uid) { state.sentTo = null; state.sentKind = null; state.authMode = 'signin'; }
+  if (uid) { state.sentTo = null; state.sentKind = null; state.authMode = 'signin'; linkError = ''; }
   if (!uid) {
     if (channel) { sb.removeChannel(channel); channel = null; }
     Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: linkError, recovering: false, sentKind: null, authMode: 'signin', editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
