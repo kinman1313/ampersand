@@ -410,6 +410,14 @@ details.others[open] > summary { margin-bottom: 8px; }
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
 .main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .foot:empty { display: none; }
+/* Calendars */
+.terms-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.cal-badge { font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 3px 10px; border: 1px solid currentColor; }
+.cal-badge.free { color: var(--blue); }
+.cal-badge.clash { color: var(--changed); }
+.cal-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cal-row > span { min-width: 0; overflow-wrap: anywhere; }
+.cal-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 /* Sign in / Create account */
 .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--field-border); border-radius: 999px; padding: 3px; background: var(--bg); }
 .auth-tab { border: 0; background: transparent; border-radius: 999px; min-height: 40px; font-weight: 600; color: var(--muted); }
@@ -521,6 +529,21 @@ if (!window.supabase || typeof window.supabase.createClient !== 'function') {
 }
 /* Read what an email link carried before the client consumes and clears the URL:
    a password-reset link, or an error such as an expired or already-used link. */
+/* Result of connecting a calendar: the callback sends people back with ?calendar=…; read it, then tidy the URL. */
+const CAL_RESULT = (() => {
+  try {
+    const q = new URLSearchParams(location.search), r = q.get('calendar');
+    if (!r) return null;
+    // "pending" carries a one-time key: the connection only completes when this signed-in person confirms it
+    // (so a consent link started by someone else can't attach your calendar to their account).
+    const k = q.get('k');
+    const out = { ok: r === 'connected', pending: r === 'pending' && k && /^[A-Za-z0-9_-]{20,100}$/.test(k) ? k : null,
+      provider: q.get('provider') === 'microsoft' ? 'microsoft' : 'google', reason: q.get('reason') || '' };
+    const u = new URL(location.href); ['calendar', 'provider', 'reason', 'k'].forEach(x => u.searchParams.delete(x));
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+    return out;
+  } catch (e) { return null; }
+})();
 const AUTH_LINK = (() => {
   const h = new URLSearchParams((location.hash || '').replace(/^#/, '')), q = new URLSearchParams(location.search);
   const type = h.get('type') || q.get('type');
@@ -596,6 +619,77 @@ try {
 const devNotifyOn = () => { try { return localStorage.getItem('amp.devnotify') === '1' && 'Notification' in window && Notification.permission === 'granted'; } catch (e) { return false; } };
 /* On touch keyboards Return makes a new line and the Add button adds; with a real keyboard Enter adds. */
 const touchFirst = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
+/* ---------- calendars ---------- */
+const CAL_NAMES = { google: 'Google Calendar', microsoft: 'Outlook' };
+const cal = { status: null, busy: null, busyKey: '', busyAt: 0, busyLoading: false };
+/* Wall-clock time in an IANA zone -> UTC milliseconds (handles DST by correcting the guess twice). */
+function zonedToUtc(day, hhmm, tz) {
+  const d = parseDay(day), m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+  if (!d || !m) return NaN;
+  const want = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), +m[1], +m[2]);
+  if (!tz) return new Date(d.getFullYear(), d.getMonth(), d.getDate(), +m[1], +m[2]).getTime();
+  let guess = want;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+        .formatToParts(new Date(guess)).map(x => [x.type, x.value]));
+      const seen = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute);
+      guess += want - seen;
+    } catch (e) { return NaN; }
+  }
+  return guess;
+}
+const householdTz = () => (state.household && state.household.timezone) || (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+const calChecking = () => { const st = cal.status; return !!st && ((st.mine || []).some(c => c.check_conflicts) || (st.partner || []).some(c => c.check_conflicts)); };
+async function calCall(action, body) {
+  const r = await Promise.race([sb.functions.invoke('calendar', { body: Object.assign({ action }, body || {}) }), sleep(20000).then(() => ({ error: { message: 'The calendar service took too long to answer.' } }))]);
+  if (r.error) {
+    let b = null; try { b = r.error.context && typeof r.error.context.json === 'function' ? await r.error.context.json() : null; } catch (e) {}
+    throw Object.assign(new Error((b && (b.detail || b.error)) || r.error.message), { code: b && b.error });
+  }
+  return r.data;
+}
+async function loadCalStatus() {
+  try { cal.status = await calCall('status'); } catch (e) { cal.status = null; }
+  cal.busy = null; cal.busyKey = '';
+  const dlg = $('#settings'); if (dlg && dlg.open && !dlg.contains(document.activeElement)) renderSettings();
+  render();
+}
+/* Fetch free/busy once for the span of dates the visible options cover; cached for 5 minutes. */
+function refreshBusy() {
+  if (!calChecking() || cal.busyLoading) return;
+  const days = [];
+  for (const t of state.tasks) if (t.status !== 'done' && t.status !== 'booked') for (const o of (t.options || [])) if (parseDay(o.date)) days.push(o.date);
+  if (!days.length) return;
+  days.sort();
+  // One window from today to at least three weeks out (max 60 days), so new options rarely need a new request.
+  const from = isoDay(todayStart()), last = days[days.length - 1];
+  const minTo = isoDay(addDays(todayStart(), 21)), maxTo = isoDay(addDays(todayStart(), 60));
+  const to = last > minTo ? (last < maxTo ? last : maxTo) : minTo;
+  const covered = cal.busyKey && cal.busyKey.split('|')[0] === from && cal.busyKey.split('|')[1] >= (last < maxTo ? last : maxTo);
+  if (covered && Date.now() - cal.busyAt < 300000) return;
+  const key = from + '|' + to;
+  cal.busyLoading = true;
+  calCall('busy', { from, to, tz: householdTz() })
+    .then(r => { cal.busy = r; cal.busyKey = key; cal.busyAt = Date.now(); })
+    .catch(() => { cal.busy = null; cal.busyKey = key; cal.busyAt = Date.now(); })
+    .finally(() => { cal.busyLoading = false; render(); });
+}
+/* Badge for one option: who is busy then, if anyone. */
+function calBadge(o) {
+  const b = cal.busy; if (!b || !b.checked) return '';
+  const start = zonedToUtc(o.date, o.start, householdTz()), end = zonedToUtc(o.date, o.end, householdTz());
+  if (!isFinite(start) || !isFinite(end)) return '';
+  const hit = who => (b.busy || []).some(x => x.who === who && Date.parse(x.start) < end && Date.parse(x.end) > start);
+  const p = partner(), me = b.checked.me, them = b.checked.partner;
+  const clash = [hit('me') && 'your', hit('partner') && p && `${p.display_name}’s`].filter(Boolean);
+  if (clash.length === 2) return '<span class="cal-badge clash">Clashes with both your calendars</span>';
+  if (clash.length) return `<span class="cal-badge clash">Clashes with ${esc(clash[0])} calendar</span>`;
+  if (me && them) return '<span class="cal-badge free">Free on both calendars</span>';
+  if (me || them) return `<span class="cal-badge free">Free on ${me ? 'your' : esc((p && p.display_name) + '’s')} calendar</span>`;
+  return '';
+}
+
 /* Theme: 'green' (the default jungle-green look) or 'light'; remembered on this device. */
 const themeChoice = () => { try { return localStorage.getItem('amp.theme') === 'light' ? 'light' : 'green'; } catch (e) { return 'green'; } };
 function applyTheme(t) {
@@ -931,6 +1025,27 @@ function shell() {
   $('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 }
 
+function renderCalSettings() {
+  const st = cal.status;
+  if (!st) return '<p class="help">Calendar status couldn’t be loaded. Close and reopen Settings to try again.</p>';
+  const p = partner(), pname = p ? esc(p.display_name) : 'Your partner';
+  const rows = ['google', 'microsoft'].map(pr => {
+    const c = (st.mine || []).find(x => x.provider === pr);
+    if (!st.configured || !st.configured[pr]) return c ? '' : `<p class="help">${CAL_NAMES[pr]} isn’t set up for this app yet.${DEMO ? ' Add its client ID and secret in Supabase secrets (see README › Calendars).' : ''}</p>`;
+    if (!c) return `<div class="cal-row"><span>${CAL_NAMES[pr]}</span><button type="button" class="btn small" data-act="calconnect" data-provider="${pr}">Connect</button></div>`;
+    const id = `cal-${pr}`;
+    return `<div class="cal-card">
+      <div class="cal-row"><span><strong>${CAL_NAMES[pr]}</strong>${c.account_email ? ` · ${esc(c.account_email)}` : ''}</span><button type="button" class="btn link" data-act="caldisconnect" data-provider="${pr}">Disconnect</button></div>
+      ${c.last_error ? `<p class="err">This calendar needs reconnecting. <button type="button" class="btn link" data-act="calconnect" data-provider="${pr}">Reconnect</button></p>` : ''}
+      <label class="check"><input type="checkbox" id="${id}-chk" data-act="calsetting" data-provider="${pr}" data-field="check_conflicts" ${c.check_conflicts ? 'checked' : ''}> Check it for clashes (only busy times are shared, never event details)</label>
+      <label class="check"><input type="checkbox" id="${id}-add" data-act="calsetting" data-provider="${pr}" data-field="add_bookings" ${c.add_bookings ? 'checked' : ''}> Add bookings to it</label>
+    </div>`;
+  }).join('');
+  const pc = (st.partner || []);
+  const theirs = p ? (pc.length ? `<p class="help">${pname} has connected ${pc.map(x => CAL_NAMES[x.provider]).join(' and ')}.</p>` : `<p class="help">${pname} hasn’t connected a calendar yet.</p>`) : '';
+  return rows + theirs;
+}
+
 function renderSettings() {
   const body = $('#setBody');
   if (!body || !state.household) return;
@@ -963,6 +1078,10 @@ function renderSettings() {
     ${emailNote}
     <label class="check"><input type="checkbox" id="setDev" data-act="setdev" ${devOn && perm === 'granted' ? 'checked' : ''} ${canNotify && perm !== 'denied' ? '' : 'disabled aria-describedby="setDevNote"'}> Notify me on this device while Ampersand is open in another tab</label>
     ${!canNotify ? '<p class="help" id="setDevNote">This browser doesn’t support notifications.</p>' : perm === 'denied' ? '<p class="help" id="setDevNote">Notifications are blocked for this site. Allow them in your browser’s site settings to use this.</p>' : ''}
+  </section>
+  <section class="set-sec" aria-labelledby="setCal">
+    <h3 id="setCal">Calendars</h3>
+    ${renderCalSettings()}
   </section>
   <section class="set-sec" aria-labelledby="setLook">
     <h3 id="setLook">Appearance</h3>
@@ -1083,7 +1202,7 @@ function renderOption(t, o, ap) {
   return `<li class="opt ${isMine ? 'mine' : ''} ${passed && !isMine ? 'passed' : ''} ${open ? 'open' : ''}" style="--me: var(--${me() ? me().color : 'blue'})">
     <div class="opt-head"><span class="vendor">${esc(o.vendor)}</span>${tag}</div>
     <p class="opt-title" id="${tid}" dir="auto">${esc(o.title)}</p>
-    <div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in</div>
+    <div class="terms-row"><div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in</div>${calBadge(o)}</div>
     ${o.detail ? `<p class="opt-detail why">${esc(o.detail)}</p>` : ''}
     ${hasMore ? `<div class="opt-more" id="${moreId}" ${open ? '' : 'hidden'}>
       ${o.includes ? `<p class="opt-detail">Includes: ${esc(o.includes)}</p>` : ''}
@@ -1396,6 +1515,7 @@ function render() {
   }
   for (const id in selects) { const s = document.getElementById(id); if (s) s.value = selects[id]; }
   restoreFocus(fk);
+  refreshBusy();
 }
 
 /* ---------- toast ---------- */
@@ -1567,7 +1687,7 @@ async function research(taskId) {
   state.tasks[i] = Object.assign({}, t, { status: 'researching', research_at: new Date().toISOString() });
   render();
   try {
-    const r = await agent('research', { taskId });
+    const r = await agent('research', { taskId, tz: householdTz() });
     if (r && r.ok && r.count > 0) nudge('options', taskId);
   }
   catch (e) {
@@ -1595,7 +1715,20 @@ async function book(taskId, scenario) {
   await Promise.all([fetchTable('tasks'), fetchTable('approvals')]);
   render();
   if (error) { toast(friendly(error)); return; }
-  toast(data && data.booked ? 'Booked. The live terms matched what you both approved.' : "Didn't book. The terms changed, so you both need to say yes again.");
+  if (!(data && data.booked)) { toast("Didn't book. The terms changed, so you both need to say yes again."); return; }
+  toast('Booked. The live terms matched what you both approved.');
+  addBookingToCalendars(taskId);
+}
+/* Best-effort: put the booking on each connected calendar that asked for bookings. */
+async function addBookingToCalendars(taskId) {
+  const st = cal.status;
+  if (!st || ![...(st.mine || []), ...(st.partner || [])].some(c => c.add_bookings)) return;
+  try {
+    const r = await calCall('add_event', { taskId, tz: householdTz() });
+    const n = (r.added || []).length, failed = (r.errors || []).length;
+    if (n) toast(`Booked, and added to ${n === 1 ? 'a calendar' : n + ' calendars'}.${failed ? ' One calendar couldn’t be updated; check Settings › Calendars.' : ''}`);
+    else if (failed) toast('Booked, but the calendar couldn’t be updated. Check Settings › Calendars.');
+  } catch (e) { console.warn('calendar add_event', e); toast('Booked, but the calendar couldn’t be updated. Check Settings › Calendars.'); }
 }
 
 async function markDone(taskId) {
@@ -1916,6 +2049,31 @@ document.addEventListener('click', async e => {
       return;
     }
     if (act === 'closesettings') { const d = $('#settings'); if (d) d.close(); return; }
+    if (act === 'calconnect') {
+      const provider = b.dataset.provider;
+      try {
+        const r = await busy(() => calCall('connect', { provider, returnTo: location.origin + location.pathname }));
+        if (r && r.url && /^https:\/\/(accounts\.google\.com|login\.microsoftonline\.com)\//.test(r.url)) { location.assign(r.url); return; }
+        toast('Couldn’t start connecting that calendar. Try again.');
+      } catch (er) { toast(er.code === 'not_configured' ? `${CAL_NAMES[provider]} isn’t set up for this app yet.` : 'Couldn’t start connecting that calendar. ' + friendly(er)); }
+      return;
+    }
+    if (act === 'caldisconnect') {
+      const provider = b.dataset.provider;
+      try { await busy(() => calCall('disconnect', { provider })); toast(`${CAL_NAMES[provider]} disconnected.`); }
+      catch (er) { toast('Couldn’t disconnect. ' + friendly(er)); }
+      await loadCalStatus(); renderSettings(); return;
+    }
+    if (act === 'calsetting') {
+      const provider = b.dataset.provider, field = b.dataset.field, on = b.checked;
+      try {
+        await calCall('settings', { provider, [field]: on });
+        const c = cal.status && (cal.status.mine || []).find(x => x.provider === provider); if (c) c[field] = on;
+        cal.busy = null; cal.busyKey = '';
+        toast(field === 'check_conflicts' ? (on ? 'Clash checking on.' : 'Clash checking off.') : (on ? 'Bookings will be added.' : 'Bookings won’t be added.'));
+      } catch (er) { b.checked = !on; toast('Couldn’t save that. ' + friendly(er)); }
+      return;
+    }
     if (act === 'settheme') { applyTheme(b.value); toast(b.value === 'light' ? 'Light appearance on.' : 'Jungle green appearance on.'); return; }
     if (act === 'skip') { e.preventDefault(); const l = $('#list'); if (l) { l.focus(); l.scrollIntoView({ block: 'start' }); } return; }
     if (act === 'setemail') {
@@ -2052,6 +2210,27 @@ async function enterApp() {
   agent('status')
     .then(r => { state.agentOn = !!(r && r.configured); state.agentUnreachable = false; render(); })
     .catch(e => { if (e.code !== 'agent_not_configured') { state.agentOn = null; state.agentUnreachable = true; render(); } });
+  loadCalStatus();
+  // Remember the household's timezone (used for calendar events and free/busy) the first time we see it.
+  if (state.household && !state.household.timezone) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) sb.from('households').update({ timezone: tz }).eq('id', state.household.id)
+      .then(({ error }) => { if (!error) state.household.timezone = tz; }).catch(() => {}); // best-effort; the browser zone is used meanwhile
+  }
+  if (CAL_RESULT && !cal.resultShown) {
+    cal.resultShown = true;
+    const name = CAL_NAMES[CAL_RESULT.provider];
+    const connected = () => toast(`${name} connected. Ampersand will check it for clashes and add your bookings.`);
+    if (CAL_RESULT.pending) {
+      calCall('finish', { k: CAL_RESULT.pending })
+        .then(() => { connected(); loadCalStatus(); })
+        .catch(e => toast(e.code === 'not_yours' ? `That ${name} link was started from a different account, so it wasn’t connected.`
+          : e.code === 'expired' ? `That ${name} connection took too long. Connect it again from Settings › Calendars.`
+          : `${name} couldn’t be connected. Try again from Settings › Calendars.`));
+    } else toast(CAL_RESULT.ok ? `${name} connected. Ampersand will check it for clashes and add your bookings.`
+      : CAL_RESULT.reason === 'denied' ? `${name} wasn’t connected: permission wasn’t given.`
+      : `${name} couldn’t be connected. Try again from Settings › Calendars.`);
+  }
   sb.functions.invoke('notify', { body: { action: 'status' } })
     .then(r => {
       if (!(r && r.data && typeof r.data.email === 'boolean')) return;
