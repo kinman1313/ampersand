@@ -40,23 +40,23 @@ if (location.hostname === 'ampersand-home.vercel.app') location.replace('https:/
   --surface-2: #27463A;
   --well: #14251E;
 
-  /* Translucent frosted glass layers */
-  --glass: rgba(17, 38, 30, 0.36);
-  --glass-strong: rgba(15, 34, 27, 0.62);
-  --glass-well: rgba(11, 26, 20, 0.34);
-  --glass-pill: rgba(24, 52, 41, 0.38);
-  --glass-btn: rgba(235, 255, 246, 0.10);
-  --glass-border: rgba(236, 255, 246, 0.24);
-  --glass-border-strong: rgba(236, 255, 246, 0.38);
-  --specular: rgba(246, 255, 250, 0.36);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0.09) 100%);
-  --blur-sm: blur(14px) saturate(175%);
-  --blur-md: blur(22px) saturate(190%);
-  --blur-lg: blur(30px) saturate(200%);
-  --band-alpha: 68%;
+  /* Translucent glass layers — lightened frost so the emerald nebula shows faintly through cards */
+  --glass: rgba(12, 28, 22, 0.44);
+  --glass-strong: rgba(11, 26, 20, 0.68);
+  --glass-well: rgba(8, 20, 15, 0.42);
+  --glass-pill: rgba(14, 34, 26, 0.48);
+  --glass-btn: rgba(235, 255, 246, 0.09);
+  --glass-border: rgba(230, 255, 242, 0.22);
+  --glass-border-strong: rgba(230, 255, 242, 0.36);
+  --specular: rgba(242, 255, 248, 0.30);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.02) 44%, rgba(255, 255, 255, 0.05) 100%);
+  --blur-sm: blur(7px) saturate(135%);
+  --blur-md: blur(11px) saturate(145%);
+  --blur-lg: blur(18px) saturate(155%);
+  --band-alpha: 72%;
 
   --ink: #F6F5EB;
-  --muted: #CDE2D7;
+  --muted: #CFE3D8;
   --line: rgba(205, 240, 222, 0.20);
   --field-border: rgba(196, 234, 215, 0.42);
 
@@ -71,14 +71,14 @@ if (location.hostname === 'ampersand-home.vercel.app') location.replace('https:/
   --on-band: #F4F3E8;
   --focus: #F4D35E;
   --toast-link: #19647E;
-  --priv-bg: rgba(22, 102, 130, 0.34);
-  --priv-card-bg: rgba(22, 102, 130, 0.28);
-  --priv-border: rgba(112, 212, 242, 0.56);
+  --priv-bg: rgba(18, 84, 108, 0.42);
+  --priv-card-bg: rgba(18, 84, 108, 0.36);
+  --priv-border: rgba(112, 212, 242, 0.54);
   --priv-badge-bg: #19647E;
   --priv-badge-ink: #FAF6E8;
 
-  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.22), 0 20px 46px -14px rgba(0, 0, 0, 0.54);
-  --shadow-float: 0 24px 60px -10px rgba(0, 0, 0, 0.68);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.24), 0 20px 46px -14px rgba(0, 0, 0, 0.56);
+  --shadow-float: 0 24px 60px -10px rgba(0, 0, 0, 0.70);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --t-fast: 140ms;
   --t-med: 240ms;
@@ -96,15 +96,15 @@ if (location.hostname === 'ampersand-home.vercel.app') location.replace('https:/
   --surface-2: #EFE8D0;
   --well: #F5EFE0;
 
-  --glass: rgba(255, 253, 248, 0.44);
-  --glass-strong: rgba(255, 253, 248, 0.72);
-  --glass-well: rgba(255, 252, 245, 0.38);
-  --glass-pill: rgba(255, 253, 248, 0.48);
-  --glass-btn: rgba(255, 253, 248, 0.46);
+  --glass: rgba(255, 253, 248, 0.48);
+  --glass-strong: rgba(255, 253, 248, 0.74);
+  --glass-well: rgba(255, 252, 245, 0.42);
+  --glass-pill: rgba(255, 253, 248, 0.52);
+  --glass-btn: rgba(255, 253, 248, 0.48);
   --glass-border: rgba(255, 255, 255, 0.72);
   --glass-border-strong: rgba(31, 39, 27, 0.24);
   --specular: rgba(255, 255, 255, 0.98);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.76) 0%, rgba(255, 255, 255, 0.14) 44%, rgba(255, 255, 255, 0.50) 100%);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.14) 44%, rgba(255, 255, 255, 0.46) 100%);
   --band-alpha: 84%;
 
   --ink: #1B2418;
@@ -143,26 +143,31 @@ body {
   position: relative;
   overflow-x: clip;
 }
-/* Rich full-viewport aurora gradient + luminous light ribbons behind frosted glass */
+/* Emerald nebula background image with subtle contrast veil for dark Emerald Glass theme */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -2;
-  background:
-    linear-gradient(126deg, transparent 18%, rgba(138, 236, 202, 0.14) 34%, rgba(34, 158, 178, 0.10) 45%, transparent 58%),
-    linear-gradient(54deg, transparent 36%, rgba(244, 211, 94, 0.09) 52%, transparent 68%),
-    radial-gradient(62vw 48vh at 8% 10%, rgba(22, 148, 178, 0.56), transparent 64%),
-    radial-gradient(58vw 46vh at 90% 14%, rgba(20, 204, 138, 0.52), transparent 60%),
-    radial-gradient(52vw 44vh at 48% 46%, rgba(40, 188, 182, 0.34), transparent 62%),
-    radial-gradient(54vw 44vh at 14% 78%, rgba(244, 211, 94, 0.24), transparent 60%),
-    radial-gradient(52vw 44vh at 86% 80%, rgba(238, 150, 75, 0.22), transparent 60%),
-    radial-gradient(56vw 40vh at 50% 96%, rgba(22, 166, 126, 0.36), transparent 64%),
-    linear-gradient(155deg, #0D221B 0%, #16382B 44%, #0E241D 76%, #142F26 100%);
+  background-color: #0D1C16;
+  background-image:
+    linear-gradient(180deg, rgba(8, 22, 17, 0.28) 0%, rgba(9, 24, 18, 0.36) 55%, rgba(8, 20, 15, 0.44) 100%),
+    url("./bg-emerald.jpg");
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
+@media (min-aspect-ratio: 1/1) {
+  body::before {
+    background-image:
+      linear-gradient(180deg, rgba(8, 22, 17, 0.28) 0%, rgba(9, 24, 18, 0.36) 55%, rgba(8, 20, 15, 0.44) 100%),
+      url("./bg-emerald-wide.jpg");
+  }
 }
 :root[data-theme="light"] body::before {
-  background:
+  background-color: var(--bg);
+  background-image:
     linear-gradient(126deg, transparent 18%, rgba(255, 255, 255, 0.62) 34%, rgba(244, 211, 94, 0.18) 46%, transparent 60%),
     radial-gradient(62vw 48vh at 8% 10%, rgba(244, 211, 94, 0.50), transparent 62%),
     radial-gradient(58vw 46vh at 90% 14%, rgba(40, 175, 176, 0.38), transparent 60%),
@@ -170,23 +175,22 @@ body::before {
     radial-gradient(52vw 44vh at 16% 80%, rgba(56, 182, 138, 0.26), transparent 60%),
     radial-gradient(54vw 44vh at 84% 78%, rgba(238, 150, 75, 0.30), transparent 60%),
     linear-gradient(155deg, #F5EBD0 0%, #FAF5E7 48%, #EFE4C4 100%);
+  background-size: auto;
 }
-/* Crisp architectural dot-and-flute texture + subtle frost grain so backdrop-filter visibly refracts */
+/* Whisper-soft grain on dark; crisp linen dot-and-flute texture on Sunlit linen light theme */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='84' viewBox='0 0 84 84'%3E%3Cpath d='M0 84L84 0M-21 21L21 -21M63 105L105 63' stroke='%23E8FFF5' stroke-opacity='0.09' stroke-width='1'/%3E%3Ccircle cx='14' cy='14' r='1.2' fill='%23E8FFF5' fill-opacity='0.22'/%3E%3Ccircle cx='56' cy='56' r='1.2' fill='%23E8FFF5' fill-opacity='0.18'/%3E%3Ccircle cx='56' cy='14' r='0.9' fill='%23F4D35E' fill-opacity='0.16'/%3E%3Ccircle cx='14' cy='56' r='0.9' fill='%2328AFB0' fill-opacity='0.20'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
-  background-size: 84px 84px, 120px 120px;
+  background-image: none;
 }
 :root[data-theme="light"] body::after {
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='84' viewBox='0 0 84 84'%3E%3Cpath d='M0 84L84 0M-21 21L21 -21M63 105L105 63' stroke='%231F3326' stroke-opacity='0.075' stroke-width='1'/%3E%3Ccircle cx='14' cy='14' r='1.2' fill='%231F3326' fill-opacity='0.16'/%3E%3Ccircle cx='56' cy='56' r='1.2' fill='%2319647E' fill-opacity='0.16'/%3E%3Ccircle cx='56' cy='14' r='0.95' fill='%23C96A1E' fill-opacity='0.15'/%3E%3Ccircle cx='14' cy='56' r='0.95' fill='%232B6249' fill-opacity='0.15'/%3E%3C/svg%3E"),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-size: 84px 84px, 120px 120px;
 }
 body:has(dialog[open]) { overflow: hidden; }
 
