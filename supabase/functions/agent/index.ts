@@ -188,7 +188,7 @@ Finish with JSON only, no prose after it: {"note":"one plain sentence for the co
         }
         const baseNote = String(out?.note || "Here are three options. Prices are checked again before anything is booked.").slice(0, 300);
         const { error: saveErr } = await sb.from("tasks").update({
-          status: "open", options: kept, research: false,
+          status: "open", options: kept, research: false, voided: null,
           agent_note: conflict ? `${baseNote.slice(0, 220)} Heads up: every option clashes with one of your calendars.` : baseNote,
           log: addLog(log1, `Found ${kept.length} options. Each of you can say yes to one.`),
         }).eq("id", t.id);

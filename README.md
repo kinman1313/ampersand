@@ -79,7 +79,7 @@ People can create an account with email and password, sign in with it, reset a f
 
 ## Look
 
-The palette is Dark Jungle Green `#1F271B` (the background), Blue Sapphire `#19647E`, Light Sea Green `#28AFB0`, Stil De Grain Yellow `#F4D35E` and Big Foot Feet `#EE964B`, as CSS variables at the top of `index.html`. Sea green and orange are the two people; yellow is the primary action and "you both agreed". Settings > Appearance offers a Light variant built from the same colours.
+The palette blends Dark Jungle Green with deep emerald (`#111E18` / `#1D332A`), paired with Blue Sapphire `#19647E`, Light Sea Green `#28AFB0`, Stil De Grain Yellow `#F4D35E` and Warm Amber `#EE964B`, as CSS variables at the top of `index.html`. Sea green (circle) and warm amber (rounded square) are the two people; blue sapphire owns Private ("Just mine") mode; gold is reserved for hero capture, "you both agreed", and booking. Settings > Appearance offers a Light variant (*Sunlit linen*) built from the same colours.
 
 The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersand.app` (same path, query and sign-in tokens) from a short script at the top of the page.
 
