@@ -2,7 +2,7 @@
 
 A shared to-do list for two people. Say things loosely, an agent sorts them into projects and finds real options, and nothing gets booked until both of you say yes to the exact same terms.
 
-Live: https://ampersand-home.vercel.app
+Live: https://www.ourampersand.app
 
 ## How it fits together
 
@@ -32,11 +32,22 @@ Until real vendor connections exist, the "live" answer is simulated by the `p_sc
 
 ## Settings that live outside this repo
 
-- Supabase → Authentication → URL Configuration: Site URL and Redirect URLs set to the live address.
+- Supabase → Authentication → URL Configuration: Site URL `https://www.ourampersand.app`; Redirect URLs listed exactly (`https://www.ourampersand.app/`, plus `http://localhost:<port>/` for local work). No wildcards such as `*.vercel.app`: the app sends `location.origin` as the redirect, so the allow-list is what keeps sign-in tokens on your own site.
+- Supabase → Authentication → Sign In / Providers → Email: Confirm email on, Secure password change on, minimum password length 8 (the app enforces 8 too, and 72 bytes at most).
+- Supabase → Authentication → Emails → SMTP Settings: custom SMTP through Resend (`smtp.resend.com`, port 465, user `resend`, password = a Resend API key, sender on `ourampersand.app`). Supabase's built-in email only reaches project team members and is limited to a few per hour, so confirmation and reset emails need this.
+- Supabase → Authentication → Attack Protection: leaked-password protection on, if your plan has it.
 - Supabase → Edge Functions → Secrets: `ANTHROPIC_API_KEY`. Never commit it.
 - Supabase → Edge Functions → Secrets, for nudge emails: `RESEND_API_KEY` (from Resend) and `NOTIFY_FROM`, such as `Ampersand <nudges@yourdomain>`, on a domain verified in Resend. Optional: `APP_URL`, the link used when the app doesn't send its own address. Without the first two, nudges are skipped (`email_not_configured`) and nothing fails. `SUPABASE_SERVICE_ROLE_KEY` is provided to edge functions by Supabase.
 
 The Supabase key in `index.html` is the public anon key, which is meant to be in browser code; row-level security is what protects the data.
+
+## Sign-in
+
+People can create an account with email and password, sign in with it, reset a forgotten password from an emailed link, and set or change it in Settings (changing it signs out other devices). The one-time email link still works as an alternative.
+
+## Security headers
+
+`vercel.json` sends a Content-Security-Policy (scripts only from this site and the pinned supabase-js file, connections only to this Supabase project, no framing), plus `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy and a permissions policy that allows only the microphone (voice input). supabase-js is also pinned with a Subresource Integrity hash. If you add a script, font or API host, add it to the policy, or the browser will block it. The policy keeps `'unsafe-inline'` because the app's code is inline in `index.html`.
 
 ## Deploying changes
 

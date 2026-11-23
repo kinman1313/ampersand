@@ -417,9 +417,11 @@ details.others[open] > summary { margin-bottom: 8px; }
 .pw { position: relative; flex: 1; min-width: 0; }
 .pw input { width: 100%; padding-right: 64px; }
 .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted);
-  font-size: 13px; font-weight: 600; min-height: 32px; min-width: 48px; border-radius: 8px; text-decoration: underline; text-underline-offset: 3px; }
+  font-size: 13px; font-weight: 600; min-height: 44px; min-width: 48px; border-radius: 8px; text-decoration: underline; text-underline-offset: 3px; }
 .pw-toggle:hover { color: var(--ink); }
 .set-sec .field input { border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 11px; background: var(--bg); min-height: 42px; }
+.gate p, .gate strong { overflow-wrap: anywhere; }
+form.auth { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin: 0; }
 .err:empty { min-height: 0; margin: 0; } /* stays rendered so role=alert is announced reliably */
 /* Ghost buttons (Pass, Cancel) need a border that reads as a button next to the solid ones. */
 .btn.ghost { border-color: var(--field-border); }
@@ -450,7 +452,7 @@ body:has(dialog[open]) .toast { opacity: 0; pointer-events: none; }
 .seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Touch screens: every control at least 44px tall (WCAG 2.5.5). */
 @media (pointer: coarse) {
-  .btn, .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
+  .auth-tab, .btn, .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
   .edit-btn, .toast #toastClose, [data-act="closesettings"] { min-width: 44px; justify-content: center; }
   .t-actions { gap: 0 16px; }
   .t-foot { padding-top: 4px; }
@@ -506,7 +508,7 @@ dialog.sheet::backdrop { background: rgba(34, 24, 19, .45); }
 <div id="root"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button type="button" id="toastBtn" hidden>Undo</button><button type="button" id="toastClose" aria-label="Dismiss">&times;</button></div>
 <div class="sr" id="announce" role="status" aria-live="polite"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
 <script>
 (() => {
 'use strict';
@@ -749,9 +751,13 @@ const brand = `<div class="brand"><span class="amp" aria-hidden="true">&amp;</sp
 
 /* Inputs carry data-enter="<action>" so pressing Enter (or Go on a phone keyboard) runs that action. */
 const MIN_PW = 8;
+/* Supabase (bcrypt) accepts at most 72 bytes. Check bytes in code rather than truncating with maxlength,
+   which would silently cut a pasted or generated password and lock the person out. */
+const tooLong = pw => new TextEncoder().encode(pw).length > 72;
+const TOO_LONG = 'That password is too long. Use 72 characters at most (fewer with emoji or accented letters).';
 /* A password field with a show/hide toggle. */
 const pwField = (id, label, auto, enter, hint) => `<div class="field"><label for="${id}">${label}</label>
-  <div class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="${MIN_PW}" maxlength="72" enterkeyhint="go" data-enter="${enter}" aria-describedby="${hint ? id + '-hint ' : ''}err">
+  <div class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="${MIN_PW}" enterkeyhint="go" data-enter="${enter}" aria-describedby="${hint ? id + '-hint ' : ''}err">
   <button type="button" class="pw-toggle" data-act="showpw" data-for="${id}" aria-pressed="false" aria-label="Show password">Show</button></div>
   ${hint ? `<span class="help" id="${id}-hint">${hint}</span>` : ''}</div>`;
 
@@ -768,11 +774,11 @@ function renderSignin() {
   } else if (sent && kind === 'confirm') {
     body = `<h1 id="gt" tabindex="-1">Confirm your email</h1>
       <p>We sent a confirmation link to <strong>${esc(sent)}</strong>. Open it to finish creating your account; after that you can sign in with your password.</p>
-      <div class="row"><button type="button" class="btn ghost" data-act="resendconfirm" data-autofocus>Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
+      <div class="row"><button type="button" class="btn ghost" data-act="resendconfirm">Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
   } else if (sent && kind === 'reset') {
     body = `<h1 id="gt" tabindex="-1">Check your email</h1>
       <p>If there's an account for <strong>${esc(sent)}</strong>, we sent it a link to choose a new password. Open it on this device.</p>
-      <div class="row"><button type="button" class="btn ghost" data-act="sendreset" data-autofocus>Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
+      <div class="row"><button type="button" class="btn ghost" data-act="sendreset">Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
   } else if (mode === 'forgot') {
     body = `<h1 id="gt" tabindex="-1">Reset your password</h1>
       <p>Enter the email you signed up with and we'll send you a link to choose a new password.</p>
@@ -795,9 +801,22 @@ function renderSignin() {
       <button type="button" class="btn ghost" data-act="sendlink">Email me a one-time sign-in link</button>`;
   }
   $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header>
-  <main><section class="gate" aria-labelledby="gt">${body}
-    <p class="err" id="err" role="alert">${esc(state.err)}</p>
+  <main><section class="gate" aria-labelledby="gt"><form class="auth" novalidate>${body}
+    <p class="err" id="err" role="alert"></p></form>
   </section></main></div>`;
+  announceErr();
+}
+/* Fill the error region a tick after the screen renders, so screen readers announce it
+   (text already present when an alert region is inserted is often not read). */
+function announceErr() {
+  const msg = state.err; if (!msg) return;
+  const field = state.errField; state.errField = null;
+  setTimeout(() => {
+    const el = $('#err'); if (!el) return;
+    el.textContent = msg;
+    const f = field && document.getElementById(field);
+    if (f) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
+  }, 60);
 }
 
 /* After opening a password-reset link: choose the new password before going into the app. */
@@ -806,11 +825,13 @@ function renderRecover() {
   <main><section class="gate" aria-labelledby="rt">
     <h1 id="rt" tabindex="-1">Choose a new password</h1>
     <p>You're signed in from the reset link. Set a new password to finish.</p>
-    ${pwField('newpw', 'New password', 'new-password', 'setnewpw', `At least ${MIN_PW} characters.`)}
+    <form class="auth" novalidate>
+    ${pwField('newpw', 'New password', 'new-password', 'setnewpw', `At least ${MIN_PW} characters.`).replace('<input id="newpw"', '<input id="newpw" data-autofocus')}
     ${pwField('newpw2', 'Type it again', 'new-password', 'setnewpw', '')}
     <div class="row"><button type="button" class="btn" data-act="setnewpw">Save password</button><button type="button" class="btn link" data-act="skiprecover">Not now</button></div>
-    <p class="err" id="err" role="alert">${esc(state.err)}</p>
+    <p class="err" id="err" role="alert"></p></form>
   </section></main></div>`;
+  announceErr();
 }
 
 function renderSetup() {
@@ -932,7 +953,7 @@ function renderSettings() {
     <h3 id="setPwTitle">Password</h3>
     <p class="help">Signed in as <strong>${esc((state.session && state.session.user && state.session.user.email) || '')}</strong>. Set or change your password to sign in without an email link.</p>
     <div class="field"><label for="setPw">New password</label>
-      <div class="row"><div class="pw"><input id="setPw" type="password" autocomplete="new-password" minlength="${MIN_PW}" maxlength="72" enterkeyhint="done" data-enter="setpw" aria-describedby="setPwHint setPwErr">
+      <div class="row"><div class="pw"><input id="setPw" type="password" autocomplete="new-password" minlength="${MIN_PW}" enterkeyhint="done" data-enter="setpw" aria-describedby="setPwHint setPwErr">
         <button type="button" class="pw-toggle" data-act="showpw" data-for="setPw" aria-pressed="false" aria-label="Show password">Show</button></div>
         <button type="button" class="btn small" data-act="setpw">Save</button></div>
       <span class="help" id="setPwHint">At least ${MIN_PW} characters.</span>
@@ -1436,6 +1457,7 @@ function friendly(e) {
   if (/pwned|breach|known to be weak|easy to guess|weak password/i.test(m)) return 'That password has shown up in a data breach. Choose a different one.';
   if (/password should (be at least|contain)|password.*(too short|at least)/i.test(m)) return `Use a longer password (at least ${MIN_PW} characters).`;
   if (/should be different|same password/i.test(m)) return 'That’s already your password. Choose a new one.';
+  if (/longer than 72|too long/i.test(m)) return TOO_LONG;
   if (/reauthenticat|recent(ly)? (login|sign)|nonce/i.test(m)) return 'For security, sign out and sign back in, then set your password.';
   if (/email not confirmed/i.test(m)) return 'Confirm your email first; we sent you a link.';
   if (/signups? (not allowed|disabled)/i.test(m)) return 'New accounts are turned off for this app right now.';
@@ -1711,7 +1733,18 @@ document.addEventListener('click', async e => {
     const f = fieldId && document.getElementById(fieldId);
     if (f && m) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
   };
-  const busy = async (fn) => { b.disabled = true; try { return await fn(); } finally { if (document.contains(b)) b.disabled = false; } };
+  // Disables the button while working. keepOnSuccess: leave it disabled after a successful auth call,
+  // because the screen is about to change and a second click would repeat the request.
+  const busy = async (fn, keepOnSuccess) => {
+    b.disabled = true; let r;
+    try { r = await fn(); return r; }
+    finally {
+      if (document.contains(b) && !(keepOnSuccess && r && !r.error)) {
+        b.disabled = false;
+        if (document.activeElement === document.body || !document.activeElement) b.focus();
+      }
+    }
+  };
   try {
     if (act === 'sendlink') {
       const email = ($('#email').value || '').trim();
@@ -1748,14 +1781,15 @@ document.addEventListener('click', async e => {
       const inp = document.getElementById(b.dataset.for); if (!inp) return;
       const show = inp.type === 'password';
       inp.type = show ? 'text' : 'password';
-      b.setAttribute('aria-pressed', String(show)); b.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); b.textContent = show ? 'Hide' : 'Show';
+      b.setAttribute('aria-pressed', String(show)); // name stays "Show password"; pressed means it's showing
       return;
     }
     if (act === 'pwsignin') {
       const email = readEmail(), password = $('#password').value;
+      if (!password && document.activeElement && document.activeElement.id === 'email' && validEmail(email)) { $('#password').focus(); return; }
       if (!validEmail(email)) { setErr('Enter a valid email address.', 'email'); return; }
       if (!password) { setErr('Enter your password.', 'password'); return; }
-      const { error } = await busy(() => sb.auth.signInWithPassword({ email, password }));
+      const { error } = await busy(() => sb.auth.signInWithPassword({ email, password }), true);
       if (error) {
         if (/not confirmed/i.test(error.message || '')) { state.sentTo = email; state.sentKind = 'confirm'; state.err = 'Confirm your email first. We can send the link again.'; render(); return; }
         setErr(friendly(error), 'password'); return;
@@ -1765,14 +1799,17 @@ document.addEventListener('click', async e => {
     }
     if (act === 'signup') {
       const email = readEmail(), password = $('#password').value;
+      if (!password && document.activeElement && document.activeElement.id === 'email' && validEmail(email)) { $('#password').focus(); return; }
       if (!validEmail(email)) { setErr('Enter a valid email address.', 'email'); return; }
       if (password.length < MIN_PW) { setErr(`Use at least ${MIN_PW} characters for your password.`, 'password'); return; }
-      const { data, error } = await busy(() => sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } }));
+      if (tooLong(password)) { setErr(TOO_LONG, 'password'); return; }
+      const { data, error } = await busy(() => sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } }), true);
+      if (!error && !(data && data.session) && document.contains(b)) b.disabled = false; // staying on this flow, so re-enable
       if (error) { setErr(friendly(error), /password/i.test(error.message || '') ? 'password' : 'email'); return; }
       if (data && data.session) { state.err = ''; return; } // email confirmation is off: signed in already
       // With confirmation on, an existing address comes back as a user with no identities (no email is sent).
       if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        state.authMode = 'signin'; state.err = 'There’s already an account for that email. Sign in, or use “Forgot password?”.'; render(); return;
+        state.authMode = 'signin'; state.err = 'There’s already an account for that email. Sign in, or use “Forgot password?”.'; state.errField = 'password'; render(); return;
       }
       state.sentTo = email; state.sentKind = 'confirm'; state.err = ''; render(); return;
     }
@@ -1792,12 +1829,21 @@ document.addEventListener('click', async e => {
     if (act === 'setnewpw' || act === 'setpw') {
       const a = $(act === 'setpw' ? '#setPw' : '#newpw'), a2 = act === 'setnewpw' ? $('#newpw2') : null;
       const password = a ? a.value : '';
+      if (a2 && !a2.value && document.activeElement === a && password) { a2.focus(); return; }
       const fail = (m, id) => { if (act === 'setnewpw') setErr(m, id); else { const st = $('#setPwErr'); if (st) st.textContent = m; if (a) { a.setAttribute('aria-invalid', 'true'); a.focus(); } } };
-      if (password.length < MIN_PW) { fail(`Use at least ${MIN_PW} characters.`, 'newpw'); return; }
+      if (password.length < MIN_PW) { fail(`That’s too short. Use at least ${MIN_PW} characters.`, 'newpw'); return; }
+      if (tooLong(password)) { fail(TOO_LONG, 'newpw'); return; }
       if (a2 && a2.value !== password) { fail('The two passwords don’t match.', 'newpw2'); return; }
-      const { error } = await busy(() => sb.auth.updateUser({ password }));
+      const { error } = await busy(() => sb.auth.updateUser({ password }), act === 'setnewpw');
       if (error) { fail(friendly(error), 'newpw'); return; }
-      if (act === 'setpw') { a.value = ''; a.removeAttribute('aria-invalid'); const st = $('#setPwErr'); if (st) st.textContent = ''; toast('Password saved. You can sign in with it from now on.'); return; }
+      // A new password ends sessions on other devices (a lost phone, a shared computer).
+      sb.auth.signOut({ scope: 'others' }).catch(() => {});
+      if (act === 'setpw') {
+        a.value = ''; a.type = 'password'; a.removeAttribute('aria-invalid');
+        const tg = document.querySelector('[data-act="showpw"][data-for="setPw"]'); if (tg) tg.setAttribute('aria-pressed', 'false');
+        const st = $('#setPwErr'); if (st) st.textContent = '';
+        toast('Password saved. Other devices were signed out.'); return;
+      }
       state.recovering = false; state.err = '';
       try { await enterApp(); toast('Password saved.'); } catch (er) { state.err = friendly(er); state.screen = 'error'; render(); }
       return;
@@ -1930,6 +1976,8 @@ function closeEdit() {
 }
 /* Save the edit form: only changed fields are written, and the history says what changed. */
 document.addEventListener('submit', async e => {
+  // Auth forms exist for password managers; Enter and buttons are handled by data-enter / data-act.
+  if (e.target.closest && e.target.closest('form.auth')) { e.preventDefault(); return; }
   const form = e.target.closest && e.target.closest('form[data-edit]');
   if (!form) return;
   e.preventDefault();
@@ -1999,6 +2047,7 @@ async function enterApp() {
   if (['households', 'members', 'tasks', 'approvals'].some(n => state.loadErrs[n])) {
     throw userError("We couldn't load your household's list. Check your connection and try again.");
   }
+  if (state.recovering) { state.screen = 'recover'; render(); return; } // a reset link arrived while loading
   state.screen = 'app';
   render();
   subscribe();
@@ -2029,7 +2078,8 @@ async function onSession(session, evt) {
   if (uid) { state.sentTo = null; state.sentKind = null; state.authMode = 'signin'; linkError = ''; }
   if (!uid) {
     if (channel) { sb.removeChannel(channel); channel = null; }
-    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: linkError, recovering: false, sentKind: null, authMode: 'signin', editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
+    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: linkError, recovering: false, sentKind: null, authMode: 'signin', authEmail: '', errField: null, editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
+    if (linkError) state.errField = 'email';
     linkError = ''; // shown once, on the first sign-in screen after the link
     render(); return;
   }
