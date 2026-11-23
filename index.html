@@ -410,6 +410,19 @@ details.others[open] > summary { margin-bottom: 8px; }
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
 .main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .foot:empty { display: none; }
+/* Sign in / Create account */
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--field-border); border-radius: 999px; padding: 3px; background: var(--bg); }
+.auth-tab { border: 0; background: transparent; border-radius: 999px; min-height: 40px; font-weight: 600; color: var(--muted); }
+.auth-tab[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.pw { position: relative; flex: 1; min-width: 0; }
+.pw input { width: 100%; padding-right: 64px; }
+.pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 600; min-height: 44px; min-width: 48px; border-radius: 8px; text-decoration: underline; text-underline-offset: 3px; }
+.pw-toggle:hover { color: var(--ink); }
+.set-sec .field input { border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 11px; background: var(--bg); min-height: 42px; }
+.gate p, .gate strong { overflow-wrap: anywhere; }
+form.auth { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin: 0; }
+.err:empty { min-height: 0; margin: 0; } /* stays rendered so role=alert is announced reliably */
 /* Ghost buttons (Pass, Cancel) need a border that reads as a button next to the solid ones. */
 .btn.ghost { border-color: var(--field-border); }
 /* Option header: vendor wraps, the tag stays put on the right. */
@@ -439,7 +452,7 @@ body:has(dialog[open]) .toast { opacity: 0; pointer-events: none; }
 .seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Touch screens: every control at least 44px tall (WCAG 2.5.5). */
 @media (pointer: coarse) {
-  .btn, .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
+  .auth-tab, .btn, .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
   .edit-btn, .toast #toastClose, [data-act="closesettings"] { min-width: 44px; justify-content: center; }
   .t-actions { gap: 0 16px; }
   .t-foot { padding-top: 4px; }
@@ -495,7 +508,7 @@ dialog.sheet::backdrop { background: rgba(34, 24, 19, .45); }
 <div id="root"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button type="button" id="toastBtn" hidden>Undo</button><button type="button" id="toastClose" aria-label="Dismiss">&times;</button></div>
 <div class="sr" id="announce" role="status" aria-live="polite"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
 <script>
 (() => {
 'use strict';
@@ -505,6 +518,24 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 if (!window.supabase || typeof window.supabase.createClient !== 'function') {
   document.getElementById('root').innerHTML = '<div class="wrap"><p class="mode" role="alert">Ampersand could not load. Check your connection and reload the page.</p></div>';
   return;
+}
+/* Read what an email link carried before the client consumes and clears the URL:
+   a password-reset link, or an error such as an expired or already-used link. */
+const AUTH_LINK = (() => {
+  const h = new URLSearchParams((location.hash || '').replace(/^#/, '')), q = new URLSearchParams(location.search);
+  const type = h.get('type') || q.get('type');
+  const code = h.get('error_code') || q.get('error_code'), desc = h.get('error_description') || q.get('error_description');
+  return { recovery: type === 'recovery', error: code || desc ? (code === 'otp_expired' || /expired|invalid/i.test(desc || '')
+    ? 'That email link has expired or was already used. Ask for a new one below.'
+    : 'That email link didn’t work. Ask for a new one below.') : '' };
+})();
+if (AUTH_LINK.error) {
+  // Don't let a reload show the same link error again.
+  try {
+    const u = new URL(location.href);
+    ['error', 'error_code', 'error_description'].forEach(k => u.searchParams.delete(k));
+    history.replaceState(history.state, '', u.pathname + u.search);
+  } catch (e) {}
 }
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: true, detectSessionInUrl: true } });
 
@@ -719,19 +750,88 @@ function taskState(t) {
 const brand = `<div class="brand"><span class="amp" aria-hidden="true">&amp;</span><span class="word">Ampersand</span></div>`;
 
 /* Inputs carry data-enter="<action>" so pressing Enter (or Go on a phone keyboard) runs that action. */
+const MIN_PW = 8;
+/* Supabase (bcrypt) accepts at most 72 bytes. Check bytes in code rather than truncating with maxlength,
+   which would silently cut a pasted or generated password and lock the person out. */
+const tooLong = pw => new TextEncoder().encode(pw).length > 72;
+const TOO_LONG = 'That password is too long. Use 72 characters at most (fewer with emoji or accented letters).';
+/* A password field with a show/hide toggle. */
+const pwField = (id, label, auto, enter, hint) => `<div class="field"><label for="${id}">${label}</label>
+  <div class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="${MIN_PW}" enterkeyhint="go" data-enter="${enter}" aria-describedby="${hint ? id + '-hint ' : ''}err">
+  <button type="button" class="pw-toggle" data-act="showpw" data-for="${id}" aria-pressed="false" aria-label="Show password">Show</button></div>
+  ${hint ? `<span class="help" id="${id}-hint">${hint}</span>` : ''}</div>`;
+
 function renderSignin() {
-  const sent = state.sentTo;
-  $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header>
-  <main><section class="gate" aria-labelledby="gt">
-    <h1 id="gt" tabindex="-1">${sent ? 'Check your email' : 'Sign in'}</h1>
-    ${sent ? `<p>We sent a sign-in link to <strong>${esc(sent)}</strong>. Open it on this device and you'll land back here, signed in.</p>
+  const sent = state.sentTo, kind = state.sentKind || 'link';
+  const mode = state.authMode || 'signin';
+  const email = esc(state.authEmail || '');
+  let body;
+  if (sent && kind === 'link') {
+    body = `<h1 id="gt" tabindex="-1">Check your email</h1>
+      <p>We sent a sign-in link to <strong>${esc(sent)}</strong>. Open it on this device and you'll land back here, signed in.</p>
       <div class="field"><label for="code">Or type the code from the email, if it has one</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" enterkeyhint="go" data-enter="verify" data-autofocus aria-describedby="err"></div>
-      <div class="row"><button type="button" class="btn" data-act="verify">Sign in with code</button><button type="button" class="btn link" data-act="resendlink">Send the link again</button><button type="button" class="btn link" data-act="resend">Use a different email</button></div>`
-    : `<p>One shared list for the two of you. An agent does the research; nothing is booked until you both say yes.</p>
-      <div class="field"><label for="email">Your email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com" enterkeyhint="send" data-enter="sendlink" data-autofocus aria-describedby="err"></div>
-      <button type="button" class="btn" data-act="sendlink">Email me a sign-in link</button>`}
-    <p class="err" id="err" role="alert">${esc(state.err)}</p>
+      <div class="row"><button type="button" class="btn" data-act="verify">Sign in with code</button><button type="button" class="btn link" data-act="resendlink">Send the link again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
+  } else if (sent && kind === 'confirm') {
+    body = `<h1 id="gt" tabindex="-1">Confirm your email</h1>
+      <p>We sent a confirmation link to <strong>${esc(sent)}</strong>. Open it to finish creating your account; after that you can sign in with your password.</p>
+      <div class="row"><button type="button" class="btn ghost" data-act="resendconfirm">Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
+  } else if (sent && kind === 'reset') {
+    body = `<h1 id="gt" tabindex="-1">Check your email</h1>
+      <p>If there's an account for <strong>${esc(sent)}</strong>, we sent it a link to choose a new password. Open it on this device.</p>
+      <div class="row"><button type="button" class="btn ghost" data-act="sendreset">Send it again</button><button type="button" class="btn link" data-act="backsignin">Back to sign in</button></div>`;
+  } else if (mode === 'forgot') {
+    body = `<h1 id="gt" tabindex="-1">Reset your password</h1>
+      <p>Enter the email you signed up with and we'll send you a link to choose a new password.</p>
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" value="${email}" placeholder="you@example.com" enterkeyhint="send" data-enter="sendreset" data-autofocus aria-describedby="err"></div>
+      <div class="row"><button type="button" class="btn" data-act="sendreset">Send reset link</button><button type="button" class="btn link" data-act="authmode" data-mode="signin">Back to sign in</button></div>`;
+  } else {
+    const signup = mode === 'signup';
+    body = `<h1 id="gt" tabindex="-1">${signup ? 'Create your account' : 'Sign in'}</h1>
+      <p>One shared list for the two of you. An agent does the research; nothing is booked until you both say yes.</p>
+      <div class="auth-tabs" role="group" aria-label="Account">
+        <button type="button" class="auth-tab" data-act="authmode" data-mode="signin" aria-pressed="${!signup}">Sign in</button>
+        <button type="button" class="auth-tab" data-act="authmode" data-mode="signup" aria-pressed="${signup}">Create account</button>
+      </div>
+      <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="${signup ? 'email' : 'username'}" value="${email}" placeholder="you@example.com" enterkeyhint="next" data-enter="${signup ? 'signup' : 'pwsignin'}" data-autofocus aria-describedby="err"></div>
+      ${signup ? pwField('password', 'Choose a password', 'new-password', 'signup', `At least ${MIN_PW} characters. A short phrase is easy to remember.`)
+               : pwField('password', 'Password', 'current-password', 'pwsignin', '')}
+      ${signup ? `<button type="button" class="btn" data-act="signup">Create account</button>`
+               : `<div class="row"><button type="button" class="btn" data-act="pwsignin">Sign in</button><button type="button" class="btn link" data-act="authmode" data-mode="forgot">Forgot password?</button></div>`}
+      <div class="divider">or</div>
+      <button type="button" class="btn ghost" data-act="sendlink">Email me a one-time sign-in link</button>`;
+  }
+  $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header>
+  <main><section class="gate" aria-labelledby="gt"><form class="auth" novalidate>${body}
+    <p class="err" id="err" role="alert"></p></form>
   </section></main></div>`;
+  announceErr();
+}
+/* Fill the error region a tick after the screen renders, so screen readers announce it
+   (text already present when an alert region is inserted is often not read). */
+function announceErr() {
+  const msg = state.err; if (!msg) return;
+  const field = state.errField; state.errField = null;
+  setTimeout(() => {
+    const el = $('#err'); if (!el) return;
+    el.textContent = msg;
+    const f = field && document.getElementById(field);
+    if (f) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
+  }, 60);
+}
+
+/* After opening a password-reset link: choose the new password before going into the app. */
+function renderRecover() {
+  $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header>
+  <main><section class="gate" aria-labelledby="rt">
+    <h1 id="rt" tabindex="-1">Choose a new password</h1>
+    <p>You're signed in from the reset link. Set a new password to finish.</p>
+    <form class="auth" novalidate>
+    ${pwField('newpw', 'New password', 'new-password', 'setnewpw', `At least ${MIN_PW} characters.`).replace('<input id="newpw"', '<input id="newpw" data-autofocus')}
+    ${pwField('newpw2', 'Type it again', 'new-password', 'setnewpw', '')}
+    <div class="row"><button type="button" class="btn" data-act="setnewpw">Save password</button><button type="button" class="btn link" data-act="skiprecover">Not now</button></div>
+    <p class="err" id="err" role="alert"></p></form>
+  </section></main></div>`;
+  announceErr();
 }
 
 function renderSetup() {
@@ -848,6 +948,16 @@ function renderSettings() {
   <section class="set-sec" aria-labelledby="setYou">
     <h3 id="setYou">You</h3>
     <p>${m ? `<span class="me-chip full"><span class="dot c-${m.color}"></span><span dir="auto">${esc(m.display_name)}</span></span> · your colour is ${m.color === 'orange' ? 'Raucous Orange' : 'Enchanted Blue'}` : ''}</p>
+  </section>
+  <section class="set-sec" aria-labelledby="setPwTitle">
+    <h3 id="setPwTitle">Password</h3>
+    <p class="help">Signed in as <strong>${esc((state.session && state.session.user && state.session.user.email) || '')}</strong>. Set or change your password to sign in without an email link.</p>
+    <div class="field"><label for="setPw">New password</label>
+      <div class="row"><div class="pw"><input id="setPw" type="password" autocomplete="new-password" minlength="${MIN_PW}" enterkeyhint="done" data-enter="setpw" aria-describedby="setPwHint setPwErr">
+        <button type="button" class="pw-toggle" data-act="showpw" data-for="setPw" aria-pressed="false" aria-label="Show password">Show</button></div>
+        <button type="button" class="btn small" data-act="setpw">Save</button></div>
+      <span class="help" id="setPwHint">At least ${MIN_PW} characters.</span>
+      <p class="err" id="setPwErr" role="alert"></p></div>
   </section>
   <section class="set-sec" aria-labelledby="setNudge">
     <h3 id="setNudge">Nudges</h3>
@@ -1209,7 +1319,7 @@ function announce(msg) {
 }
 let lastScreenKey = null, gateShown = false;
 function focusNewScreen() {
-  const key = state.screen + (state.sentTo ? ':sent' : '');
+  const key = state.screen + (state.sentTo ? ':sent:' + (state.sentKind || 'link') : '') + (state.screen === 'signin' ? ':' + (state.authMode || 'signin') : '');
   if (key === lastScreenKey) return;
   lastScreenKey = key;
   if (state.screen === 'app' || state.screen === 'loading') return;
@@ -1231,6 +1341,7 @@ function readEditDraft() {
 function render() {
   if (state.screen === 'loading') { $('#root').innerHTML = `<div class="wrap"><header class="top">${brand}</header><main><p class="mode" role="status">Loading your list…</p></main></div>`; focusNewScreen(); return; }
   if (state.screen === 'signin') { renderSignin(); focusNewScreen(); return; }
+  if (state.screen === 'recover') { renderRecover(); focusNewScreen(); return; }
   if (state.screen === 'setup') { renderSetup(); focusNewScreen(); return; }
   if (state.screen === 'error') { renderError(); focusNewScreen(); return; }
   shell();
@@ -1341,6 +1452,15 @@ function friendly(e) {
   const m = String(e.message || e.error_description || e.msg || '');
   if (OWN_MESSAGES.test(m)) return /[.!?]$/.test(m) ? m : m + '.';
   if (e.code === 'timeout') return 'That took too long to answer. Try again in a moment.';
+  if (/invalid login credentials/i.test(m)) return 'That email and password don’t match. Try again, or use “Forgot password?”.';
+  if (/already (been )?registered|already exists/i.test(m)) return 'There’s already an account for that email. Sign in, or use “Forgot password?”.';
+  if (/pwned|breach|known to be weak|easy to guess|weak password/i.test(m)) return 'That password has shown up in a data breach. Choose a different one.';
+  if (/password should (be at least|contain)|password.*(too short|at least)/i.test(m)) return `Use a longer password (at least ${MIN_PW} characters).`;
+  if (/should be different|same password/i.test(m)) return 'That’s already your password. Choose a new one.';
+  if (/longer than 72|too long/i.test(m)) return TOO_LONG;
+  if (/reauthenticat|recent(ly)? (login|sign)|nonce/i.test(m)) return 'For security, sign out and sign back in, then set your password.';
+  if (/email not confirmed/i.test(m)) return 'Confirm your email first; we sent you a link.';
+  if (/signups? (not allowed|disabled)/i.test(m)) return 'New accounts are turned off for this app right now.';
   if (/failed to fetch|networkerror|network request failed|load failed|err_internet|fetch failed/i.test(m) || e.name === 'AuthRetryableFetchError' || e.name === 'FunctionsFetchError' || e.code === 'network') return "Can't reach the server. Check your connection and try again.";
   if (/token has expired|token.*invalid|invalid.*token|otp.*(expired|invalid)/i.test(m)) return "That code didn't work or has expired. Check it, or send the link again.";
   if (/rate limit|only request this after|too many/i.test(m)) return 'Too many tries. Wait a minute, then try again.';
@@ -1613,14 +1733,25 @@ document.addEventListener('click', async e => {
     const f = fieldId && document.getElementById(fieldId);
     if (f && m) { f.setAttribute('aria-invalid', 'true'); f.focus(); }
   };
-  const busy = async (fn) => { b.disabled = true; try { return await fn(); } finally { if (document.contains(b)) b.disabled = false; } };
+  // Disables the button while working. keepOnSuccess: leave it disabled after a successful auth call,
+  // because the screen is about to change and a second click would repeat the request.
+  const busy = async (fn, keepOnSuccess) => {
+    b.disabled = true; let r;
+    try { r = await fn(); return r; }
+    finally {
+      if (document.contains(b) && !(keepOnSuccess && r && !r.error)) {
+        b.disabled = false;
+        if (document.activeElement === document.body || !document.activeElement) b.focus();
+      }
+    }
+  };
   try {
     if (act === 'sendlink') {
       const email = ($('#email').value || '').trim();
       if (!/^\S+@\S+\.\S+$/.test(email)) { setErr('Enter a valid email address.', 'email'); return; }
       const { error } = await busy(() => sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } }));
       if (error) { setErr(friendly(error), 'email'); return; }
-      state.sentTo = email; state.err = ''; render(); return;
+      state.sentTo = email; state.sentKind = 'link'; state.authEmail = email; state.err = ''; render(); return;
     }
     if (act === 'verify') {
       const token = ($('#code').value || '').replace(/\s+/g, '');
@@ -1634,7 +1765,94 @@ document.addEventListener('click', async e => {
       if (error) setErr(friendly(error)); else { setErr(''); toast(`Sent a new link to ${state.sentTo}.`); }
       return;
     }
-    if (act === 'resend') { state.sentTo = null; state.err = ''; render(); return; }
+    if (act === 'resend' || act === 'backsignin') { state.sentTo = null; state.sentKind = null; state.authMode = 'signin'; state.err = ''; render(); return; }
+    /* ----- password accounts ----- */
+    const redirectTo = location.origin + location.pathname;
+    const readEmail = () => { const el = $('#email'); const v = ((el && el.value) || state.sentTo || '').trim(); state.authEmail = v; return v; };
+    const validEmail = v => /^\S+@\S+\.\S+$/.test(v);
+    if (act === 'authmode') {
+      const el = $('#email'); if (el) state.authEmail = el.value.trim();
+      const fromTab = b.classList.contains('auth-tab');
+      state.authMode = b.dataset.mode; state.err = ''; render();
+      if (fromTab) { const t = document.querySelector(`.auth-tab[data-mode="${cssq(b.dataset.mode)}"]`); if (t) t.focus(); }
+      return;
+    }
+    if (act === 'showpw') {
+      const inp = document.getElementById(b.dataset.for); if (!inp) return;
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      b.setAttribute('aria-pressed', String(show)); // name stays "Show password"; pressed means it's showing
+      return;
+    }
+    if (act === 'pwsignin') {
+      const email = readEmail(), password = $('#password').value;
+      if (!password && document.activeElement && document.activeElement.id === 'email' && validEmail(email)) { $('#password').focus(); return; }
+      if (!validEmail(email)) { setErr('Enter a valid email address.', 'email'); return; }
+      if (!password) { setErr('Enter your password.', 'password'); return; }
+      const { error } = await busy(() => sb.auth.signInWithPassword({ email, password }), true);
+      if (error) {
+        if (/not confirmed/i.test(error.message || '')) { state.sentTo = email; state.sentKind = 'confirm'; state.err = 'Confirm your email first. We can send the link again.'; render(); return; }
+        setErr(friendly(error), 'password'); return;
+      }
+      state.err = ''; // the auth listener takes it from here
+      return;
+    }
+    if (act === 'signup') {
+      const email = readEmail(), password = $('#password').value;
+      if (!password && document.activeElement && document.activeElement.id === 'email' && validEmail(email)) { $('#password').focus(); return; }
+      if (!validEmail(email)) { setErr('Enter a valid email address.', 'email'); return; }
+      if (password.length < MIN_PW) { setErr(`Use at least ${MIN_PW} characters for your password.`, 'password'); return; }
+      if (tooLong(password)) { setErr(TOO_LONG, 'password'); return; }
+      const { data, error } = await busy(() => sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } }), true);
+      if (!error && !(data && data.session) && document.contains(b)) b.disabled = false; // staying on this flow, so re-enable
+      if (error) { setErr(friendly(error), /password/i.test(error.message || '') ? 'password' : 'email'); return; }
+      if (data && data.session) { state.err = ''; return; } // email confirmation is off: signed in already
+      // With confirmation on, an existing address comes back as a user with no identities (no email is sent).
+      if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        state.authMode = 'signin'; state.err = 'There’s already an account for that email. Sign in, or use “Forgot password?”.'; state.errField = 'password'; render(); return;
+      }
+      state.sentTo = email; state.sentKind = 'confirm'; state.err = ''; render(); return;
+    }
+    if (act === 'resendconfirm') {
+      const { error } = await busy(() => sb.auth.resend({ type: 'signup', email: state.sentTo, options: { emailRedirectTo: redirectTo } }));
+      if (error) setErr(friendly(error)); else { setErr(''); toast(`Sent a new confirmation link to ${state.sentTo}.`); }
+      return;
+    }
+    if (act === 'sendreset') {
+      const email = readEmail();
+      if (!validEmail(email)) { setErr('Enter a valid email address.', 'email'); return; }
+      const { error } = await busy(() => sb.auth.resetPasswordForEmail(email, { redirectTo }));
+      if (error) { setErr(friendly(error), $('#email') ? 'email' : null); return; }
+      if (state.sentTo === email && state.sentKind === 'reset') { setErr(''); toast(`Sent another reset link to ${email}.`); return; }
+      state.sentTo = email; state.sentKind = 'reset'; state.err = ''; render(); return;
+    }
+    if (act === 'setnewpw' || act === 'setpw') {
+      const a = $(act === 'setpw' ? '#setPw' : '#newpw'), a2 = act === 'setnewpw' ? $('#newpw2') : null;
+      const password = a ? a.value : '';
+      if (a2 && !a2.value && document.activeElement === a && password) { a2.focus(); return; }
+      const fail = (m, id) => { if (act === 'setnewpw') setErr(m, id); else { const st = $('#setPwErr'); if (st) st.textContent = m; if (a) { a.setAttribute('aria-invalid', 'true'); a.focus(); } } };
+      if (password.length < MIN_PW) { fail(`That’s too short. Use at least ${MIN_PW} characters.`, 'newpw'); return; }
+      if (tooLong(password)) { fail(TOO_LONG, 'newpw'); return; }
+      if (a2 && a2.value !== password) { fail('The two passwords don’t match.', 'newpw2'); return; }
+      const { error } = await busy(() => sb.auth.updateUser({ password }), act === 'setnewpw');
+      if (error) { fail(friendly(error), 'newpw'); return; }
+      // A new password ends sessions on other devices (a lost phone, a shared computer).
+      sb.auth.signOut({ scope: 'others' }).catch(() => {});
+      if (act === 'setpw') {
+        a.value = ''; a.type = 'password'; a.removeAttribute('aria-invalid');
+        const tg = document.querySelector('[data-act="showpw"][data-for="setPw"]'); if (tg) tg.setAttribute('aria-pressed', 'false');
+        const st = $('#setPwErr'); if (st) st.textContent = '';
+        toast('Password saved. Other devices were signed out.'); return;
+      }
+      state.recovering = false; state.err = '';
+      try { await enterApp(); toast('Password saved.'); } catch (er) { state.err = friendly(er); state.screen = 'error'; render(); }
+      return;
+    }
+    if (act === 'skiprecover') {
+      state.recovering = false; state.err = '';
+      try { await enterApp(); } catch (er) { state.err = friendly(er); state.screen = 'error'; render(); }
+      return;
+    }
     if (act === 'retry') {
       state.err = ''; state.screen = 'loading'; render();
       try { await enterApp(); } catch (er) { state.err = friendly(er); state.screen = 'error'; render(); }
@@ -1758,6 +1976,8 @@ function closeEdit() {
 }
 /* Save the edit form: only changed fields are written, and the history says what changed. */
 document.addEventListener('submit', async e => {
+  // Auth forms exist for password managers; Enter and buttons are handled by data-enter / data-act.
+  if (e.target.closest && e.target.closest('form.auth')) { e.preventDefault(); return; }
   const form = e.target.closest && e.target.closest('form[data-edit]');
   if (!form) return;
   e.preventDefault();
@@ -1827,6 +2047,7 @@ async function enterApp() {
   if (['households', 'members', 'tasks', 'approvals'].some(n => state.loadErrs[n])) {
     throw userError("We couldn't load your household's list. Check your connection and try again.");
   }
+  if (state.recovering) { state.screen = 'recover'; render(); return; } // a reset link arrived while loading
   state.screen = 'app';
   render();
   subscribe();
@@ -1843,14 +2064,23 @@ async function enterApp() {
     .catch(() => {});
 }
 let currentUid;
-async function onSession(session) {
+let linkError = AUTH_LINK.error; // an expired/used email link, explained on the sign-in screen
+async function onSession(session, evt) {
   const uid = session && session.user ? session.user.id : null;
-  if (uid === currentUid) return;
+  if (uid && state.recovering) {
+    currentUid = uid; state.session = session; state.uid = uid;
+    if (state.screen !== 'recover') { state.screen = 'recover'; state.err = ''; render(); }
+    return;
+  }
+  if (uid === currentUid) { state.session = session; return; }
   currentUid = uid;
   state.session = session; state.uid = uid;
+  if (uid) { state.sentTo = null; state.sentKind = null; state.authMode = 'signin'; linkError = ''; }
   if (!uid) {
     if (channel) { sb.removeChannel(channel); channel = null; }
-    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: '', editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
+    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: linkError, recovering: false, sentKind: null, authMode: 'signin', authEmail: '', errField: null, editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
+    if (linkError) state.errField = 'email';
+    linkError = ''; // shown once, on the first sign-in screen after the link
     render(); return;
   }
   // A failed lookup is a connection problem, never "you have no household": show a retry screen, not setup.
@@ -1866,8 +2096,13 @@ async function onSession(session) {
       const u = new URL(location.href); u.searchParams.delete('join'); u.searchParams.delete('demo'); history.replaceState(history.state, '', u);
     }
   } catch (e) {}
+  state.recovering = AUTH_LINK.recovery;
   render();
-  sb.auth.onAuthStateChange((_evt, session) => { setTimeout(() => onSession(session), 0); });
+  sb.auth.onAuthStateChange((evt, session) => {
+    // A password-reset link signs you in; ask for the new password before going into the app.
+    if (evt === 'PASSWORD_RECOVERY') state.recovering = true;
+    setTimeout(() => onSession(session, evt), 0);
+  });
   sb.auth.getSession().then(({ data }) => onSession(data.session));
 })();
 
