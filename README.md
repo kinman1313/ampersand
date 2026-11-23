@@ -45,6 +45,12 @@ The Supabase key in `index.html` is the public anon key, which is meant to be in
 
 People can create an account with email and password, sign in with it, reset a forgotten password from an emailed link, and set or change it in Settings (changing it signs out other devices). The one-time email link still works as an alternative.
 
+## Look
+
+The palette is Dark Jungle Green `#1F271B` (the background), Blue Sapphire `#19647E`, Light Sea Green `#28AFB0`, Stil De Grain Yellow `#F4D35E` and Big Foot Feet `#EE964B`, as CSS variables at the top of `index.html`. Sea green and orange are the two people; yellow is the primary action and "you both agreed". Settings > Appearance offers a Light variant built from the same colours.
+
+The old address `ampersand-home.vercel.app` forwards to `https://www.ourampersand.app` (same path, query and sign-in tokens) from a short script at the top of the page.
+
 ## Security headers
 
 `vercel.json` sends a Content-Security-Policy (scripts only from this site and the pinned supabase-js file, connections only to this Supabase project, no framing), plus `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy and a permissions policy that allows only the microphone (voice input). supabase-js is also pinned with a Subresource Integrity hash. If you add a script, font or API host, add it to the policy, or the browser will block it. The policy keeps `'unsafe-inline'` because the app's code is inline in `index.html`.
