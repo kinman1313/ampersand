@@ -28,7 +28,7 @@
 :root {
   /* Palette: Wood Bark, Bright Brown, Astronaut Blue, Enchanted Blue, Raucous Orange, Shy Champagne Blush + Sage, Sand, Ocean, Plum, Ivory */
   --bark: #30241e; --brown: #6d3f2f; --astronaut: #204759; --enchanted: #0e6f8d; --orange: #c4532c; --blush: #d39f8b;
-  --sage: #4d4934; --sand: #b79679; --ocean: #4a5f60; --plum: #562d30; --ivory: #dbc5ae; --moss: #3f5a45;
+  --sage: #4d4934; --sand: #b79679; --ocean: #4a5f60; --plum: #562d30; --ivory: #dbc5ae; --heather: #5e4a6e;
   /* Blue and orange are reserved for the two people; project swatches stay in earthy, non-blue hues. */
 
   --bg: #efe5d8;
@@ -192,7 +192,7 @@ textarea#say[readonly] { opacity: .7; }
 .b-all { background-color: var(--blush); color: var(--bark); }
 .b-home { background-color: var(--ocean); }
 .b-money { background-color: var(--sage); }
-.b-kids { background-color: var(--moss); }
+.b-kids { background-color: var(--heather); }
 .b-weekend { background-color: var(--brown); }
 .b-us { background-color: var(--plum); }
 .b-mine { background-color: var(--sand); color: var(--bark); }
@@ -370,7 +370,15 @@ details.hist .who-agent { color: var(--agent); }
 .t-side { display: grid; justify-items: end; gap: 2px; flex: none; }
 .edit-btn { min-height: 32px; padding: 4px 2px; font-size: 13px; }
 .t-side { gap: 0; }
-.task h3, .privcard .txt, .opt-title, .done-item span { overflow-wrap: anywhere; }
+.task h3, .privcard .txt, .opt-title, .done-item span, .agent-line, #toastMsg, .vendor, .note, .agreebox p, .bookbox p,
+.diff td, .opt-detail, .stale, .set-sec p, .invite p { overflow-wrap: anywhere; }
+.who { min-width: 0; }
+.me-chip { min-width: 0; }
+.t-meta, .t-meta .mono { min-width: 0; overflow-wrap: anywhere; }
+details.hist li { grid-template-columns: 92px minmax(0, 1fr); }
+details.hist li > span:last-child { overflow-wrap: anywhere; }
+.me-chip.full { max-width: 100%; } .me-chip.full > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.me-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(30vw, 220px); }
 .privcard .txt { min-width: 0; }
 /* Narrow screens: let the status pill drop under a long title instead of squeezing it. */
 @media (max-width: 600px) { .t-top { flex-wrap: wrap; } .t-main { flex: 1 1 220px; } .t-side { justify-items: start; grid-auto-flow: column; align-items: center; gap: 10px; } }
@@ -402,6 +410,22 @@ details.others[open] > summary { margin-bottom: 8px; }
 .main.first-run { grid-template-columns: minmax(0, 1fr); }
 .main.first-run .list-head h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .foot:empty { display: none; }
+/* Ghost buttons (Pass, Cancel) need a border that reads as a button next to the solid ones. */
+.btn.ghost { border-color: var(--field-border); }
+/* Option header: vendor wraps, the tag stays put on the right. */
+.opt-head { flex-wrap: nowrap; }
+.opt-head .vendor { min-width: 0; }
+.opt-head .tag { flex: none; margin-left: auto; }
+/* Status pill and Edit sit on one line on wider screens. */
+@media (min-width: 601px) { .t-side { grid-auto-flow: column; align-items: center; gap: 10px; } }
+/* A modal Settings sheet hides the toast behind its backdrop; keep it from glowing on top. */
+body:has(dialog[open]) .toast { opacity: 0; pointer-events: none; }
+@media (max-width: 600px) {
+  /* Example prompts scroll sideways on phones so tasks start higher up the screen. */
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -4px; padding: 2px 4px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; white-space: nowrap; }
+}
 /* Skip link: hidden until focused from the keyboard. */
 .skip { position: absolute; left: 12px; top: -60px; z-index: 20; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-weight: 600; text-decoration: none; }
 .skip:focus { top: 12px; }
@@ -415,7 +439,10 @@ details.others[open] > summary { margin-bottom: 8px; }
 .seg-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Touch screens: every control at least 44px tall (WCAG 2.5.5). */
 @media (pointer: coarse) {
-  .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
+  .btn, .btn.small, .btn.link, .chip, details.hist summary, details.others > summary, .toast button, .seg-opt span, .edit-btn { min-height: 44px; }
+  .edit-btn, .toast #toastClose, [data-act="closesettings"] { min-width: 44px; justify-content: center; }
+  .t-actions { gap: 0 16px; }
+  .t-foot { padding-top: 4px; }
   .btn.small { padding: 10px 14px; }
   .btn.link { display: inline-flex; align-items: center; }
   input[type="checkbox"] { width: 22px; height: 22px; }
@@ -441,13 +468,13 @@ dialog.sheet { border: 1px solid var(--line); border-radius: 20px; padding: 0; w
 dialog.sheet::backdrop { background: rgba(34, 24, 19, .45); }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 8px; position: sticky; top: 0; background: var(--surface); }
 .sheet-head h2 { font: italic 500 26px/1.1 var(--font-display); margin: 0; }
-#setBody { padding: 4px 20px 20px; display: grid; gap: 4px; }
-.set-sec { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
+#setBody { padding: 4px 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.set-sec { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 10px; padding: 14px 0; border-top: 1px solid var(--line); }
 .set-sec:first-child { border-top: 0; }
 .set-sec h3 { margin: 0; font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .set-sec p { margin: 0; }
 .set-sec .row input { flex: 1; min-width: 0; }
-.check { display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; cursor: pointer; }
+.check { overflow-wrap: anywhere; min-width: 0; display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; cursor: pointer; }
 .check input { margin-top: 2px; }
 .check input:disabled + * , .check:has(input:disabled) { color: var(--muted); cursor: default; }
 .help { font-size: 13px; color: var(--muted); margin: 0; }
@@ -486,7 +513,7 @@ const PROJECTS = [
   { id: 'all', name: 'Everything', cls: 'b-all' },
   { id: 'home', name: 'Home', cls: 'b-home', c: 'var(--ocean)' },
   { id: 'money', name: 'Money', cls: 'b-money', c: 'var(--sage)' },
-  { id: 'kids', name: 'Kids', cls: 'b-kids', c: 'var(--moss)' },
+  { id: 'kids', name: 'Kids', cls: 'b-kids', c: 'var(--heather)' },
   { id: 'weekend', name: 'Weekend', cls: 'b-weekend', c: 'var(--brown)' },
   { id: 'us', name: 'Us', cls: 'b-us', c: 'var(--plum)' },
   { id: 'mine', name: 'Just mine', cls: 'b-mine' }
@@ -511,6 +538,8 @@ const fmtStamp = ms => { const d = new Date(ms); return `${MON[d.getMonth()]} ${
 const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const msOf = ts => ts ? new Date(ts).getTime() : 0;
 const oid = () => 'o' + Math.random().toString(36).slice(2, 10);
+/* Cut by characters, not UTF-16 units, so an emoji is never split into a lone surrogate (Postgres rejects those). */
+const cut = (s, n) => Array.from(String(s == null ? '' : s)).slice(0, n).join('');
 
 /* Must match public.terms_hash() in the database. A yes is bound to exactly these terms. */
 const termsHash = o => [o.vendor, o.date, o.start, o.end, o.totalCents, o.includes || ''].join('|');
@@ -617,6 +646,8 @@ function subscribe() {
     });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && state.screen === 'app') loadAll().then(render); });
+/* Back (or a swipe back) closes the Settings sheet rather than leaving Ampersand. */
+window.addEventListener('popstate', () => { const d = document.getElementById('settings'); if (d && d.open) d.close(); });
 setInterval(() => {
   if (state.screen !== 'app' || document.hidden || state.editing) return;
   if (state.tasks.some(t => t.status === 'researching')) render();
@@ -758,7 +789,7 @@ function shell() {
       <button type="button" class="mic" id="mic" aria-pressed="false" aria-label="Voice input" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
-      <textarea id="say" rows="2" placeholder="Say it the way you'd say it out loud. Several things at once is fine." aria-describedby="sayHint" enterkeyhint="${touchFirst() ? 'enter' : 'done'}"></textarea>
+      <textarea id="say" dir="auto" rows="2" placeholder="Say it the way you'd say it out loud. Several things at once is fine." aria-describedby="sayHint" enterkeyhint="${touchFirst() ? 'enter' : 'done'}"></textarea>
       <button type="button" class="btn" id="add" data-act="capture">Add</button>
     </div>
     <div class="cap-foot">
@@ -793,7 +824,11 @@ function shell() {
     e.preventDefault(); capture();
   });
   $('#priv').addEventListener('change', updatePrivUI);
-  $('#settings').addEventListener('close', () => { const b = $('[data-act="settings"]'); if (b) b.focus(); });
+  $('#settings').addEventListener('close', () => {
+    const b = $('[data-act="settings"]'); if (b) b.focus();
+    // Closed from the sheet itself: drop the history entry we added so Back still means "back".
+    if (history.state && history.state.ampSettings) history.back();
+  });
   // Tapping the backdrop closes the sheet (closedby="any" does this natively where supported).
   $('#settings').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 }
@@ -812,7 +847,7 @@ function renderSettings() {
   body.innerHTML = `
   <section class="set-sec" aria-labelledby="setYou">
     <h3 id="setYou">You</h3>
-    <p>${m ? `<span class="me-chip"><span class="dot c-${m.color}"></span>${esc(m.display_name)}</span> · your colour is ${m.color === 'orange' ? 'Raucous Orange' : 'Enchanted Blue'}` : ''}</p>
+    <p>${m ? `<span class="me-chip full"><span class="dot c-${m.color}"></span><span dir="auto">${esc(m.display_name)}</span></span> · your colour is ${m.color === 'orange' ? 'Raucous Orange' : 'Enchanted Blue'}` : ''}</p>
   </section>
   <section class="set-sec" aria-labelledby="setNudge">
     <h3 id="setNudge">Nudges</h3>
@@ -848,7 +883,7 @@ function setPrivate(on) { const c = $('#priv'); if (c) { c.checked = on; updateP
 
 function renderHeader() {
   const m = me();
-  $('#meChip').innerHTML = m ? `<span class="dot c-${m.color}"></span>${esc(m.display_name)}` : '';
+  $('#meChip').innerHTML = m ? `<span class="dot c-${m.color}"></span><span class="nm" title="${esc(m.display_name)}">${esc(m.display_name)}</span>` : '';
   const p = partner();
   const agent = state.agentOn === false
     ? '<span class="mono">agent off · tasks are added as typed</span>'
@@ -939,7 +974,7 @@ function renderOption(t, o, ap) {
   const moreId = esc(`om-${t.id}-${o.id}`);
   return `<li class="opt ${isMine ? 'mine' : ''} ${passed && !isMine ? 'passed' : ''} ${open ? 'open' : ''}" style="--me: var(--${me() ? me().color : 'blue'})">
     <div class="opt-head"><span class="vendor">${esc(o.vendor)}</span>${tag}</div>
-    <p class="opt-title" id="${tid}">${esc(o.title)}</p>
+    <p class="opt-title" id="${tid}" dir="auto">${esc(o.title)}</p>
     <div class="terms">${esc(fmtDay(o.date))} · ${esc(fmtWindow(o))} · ${esc(money(o.totalCents))} all-in</div>
     ${o.detail ? `<p class="opt-detail why">${esc(o.detail)}</p>` : ''}
     ${hasMore ? `<div class="opt-more" id="${moreId}" ${open ? '' : 'hidden'}>
@@ -1045,7 +1080,7 @@ function renderTask(t) {
   const editing = state.editing === t.id;
   const canEdit = t.status !== 'booked' && t.status !== 'done';
   return `<article class="task k-${s.key} ${editing ? 'editing' : ''}" data-id="${t.id}" style="--c:${proj.c || 'var(--sand)'}">
-    <div class="t-top"><div class="t-main"><div class="t-meta">${meta}</div><h3 id="tt-${t.id}" tabindex="-1">${esc(t.title)}</h3></div>
+    <div class="t-top"><div class="t-main"><div class="t-meta">${meta}</div><h3 id="tt-${t.id}" tabindex="-1" dir="auto">${esc(t.title)}</h3></div>
       <div class="t-side"><span class="status ${s.key}">${esc(s.label)}</span>${canEdit && !editing ? `<button type="button" class="btn link edit-btn" data-act="edit" data-task="${t.id}" aria-label="Edit ${esc(t.title)}">Edit</button>` : ''}</div></div>
     ${editing ? renderEdit(t) : ''}
     ${body}
@@ -1081,7 +1116,7 @@ const draftOf = t => ({ title: t.title || '', project: t.project, assignee: t.as
 function renderPriv(p) {
   return `<div class="privcard ${p.done ? 'done' : ''}">
     <input type="checkbox" id="pv-${p.id}" data-act="privdone" data-id="${p.id}" ${p.done ? 'checked' : ''}>
-    <label class="txt" for="pv-${p.id}"><span>${esc(p.title)}</span><small>Only you can see this. The agent never reads it.</small></label>
+    <label class="txt" for="pv-${p.id}"><span dir="auto">${esc(p.title)}</span><small>Only you can see this. The agent never reads it.</small></label>
     <button type="button" class="btn link" data-act="privremove" data-id="${p.id}">Remove</button>
   </div>`;
 }
@@ -1123,7 +1158,7 @@ function renderList() {
   }
   const done = state.tasks.filter(t => t.status === 'done' && (f === 'all' || t.project === f)).sort((a, b) => msOf(b.done_at) - msOf(a.done_at)).slice(0, 6);
   if (done.length && f !== 'mine') {
-    html += `<div class="done-list"><h2>Done lately</h2>${done.map(t => `<div class="done-item"><span class="tick" aria-hidden="true">✓</span><span>${esc(t.title)}</span><button type="button" class="btn link" data-act="undone" data-task="${t.id}">Reopen</button></div>`).join('')}</div>`;
+    html += `<div class="done-list"><h2>Done lately</h2>${done.map(t => `<div class="done-item"><span class="tick" aria-hidden="true">✓</span><span dir="auto">${esc(t.title)}</span><button type="button" class="btn link" data-act="undone" data-task="${t.id}">Reopen</button></div>`).join('')}</div>`;
   }
   $('#list').innerHTML = html;
   // First run: nothing to filter yet, so the project swatches and summary step aside for the add box and the steps.
@@ -1243,7 +1278,13 @@ function render() {
   renderSummary(); renderBands(); renderList();
   document.querySelectorAll('details.hist').forEach(d => { const c = d.closest('.task'); if (c && openDetails.has(c.dataset.id)) d.open = true; });
   document.querySelectorAll('details.others').forEach(d => { if (openOthers.has(d.dataset.others)) d.open = true; });
-  if (state.editing && !getTask(state.editing)) { state.editing = null; state.editDraft = null; }
+  if (state.editing && state.editing !== state.savingEdit && !document.querySelector(`form[data-edit="${cssq(state.editing)}"]`)) {
+    const gone = !getTask(state.editing);
+    state.editing = null; state.editDraft = null; state.editBase = null;
+    const msg = gone ? 'The task you were editing was removed, so your changes were not saved.'
+      : 'The task you were editing moved to another project, so the edit was closed.';
+    announce(msg); toast(msg);
+  }
   for (const id in selects) { const s = document.getElementById(id); if (s) s.value = selects[id]; }
   restoreFocus(fk);
 }
@@ -1283,7 +1324,11 @@ function toast(msg, opts) {
   el.addEventListener('focusin', () => clearTimeout(toastTimer));
   el.addEventListener('focusout', e => { if (el.classList.contains('show') && !el.contains(e.relatedTarget)) armToast(); });
   $('#toastClose').addEventListener('click', () => hideToast(true));
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classList.contains('show')) hideToast(true); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !el.classList.contains('show')) return;
+    if (document.querySelector('dialog[open]')) return; // Escape closes the dialog; it must not also commit a pending Undo
+    hideToast(true);
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden && toastExpire) hideToast(true); });
 })();
 
@@ -1310,10 +1355,18 @@ const userError = msg => Object.assign(new Error(msg), { friendly: true });
 const logEntry = text => ({ at: Date.now(), who: state.uid, text });
 async function patchTask(id, patch) {
   const i = state.tasks.findIndex(t => t.id === id);
+  const before = i >= 0 ? state.tasks[i] : null;
   if (i >= 0) { state.tasks[i] = Object.assign({}, state.tasks[i], patch); render(); }
   const { error } = await sb.from('tasks').update(patch).eq('id', id);
-  if (error) { toast(friendly(error)); refetchSoon('tasks'); throw error; }
+  if (error) {
+    // Put the task back as it was, so the screen never shows a change that didn't save.
+    const j = state.tasks.findIndex(t => t.id === id);
+    if (before && j >= 0) { state.tasks[j] = before; render(); }
+    writeFailed(error); refetchSoon('tasks'); throw error;
+  }
 }
+/* Show a failed write's message and keep the follow-up "couldn't refresh" toast from replacing it. */
+function writeFailed(error) { state.lastLoadToast = Date.now(); toast(friendly(error)); }
 async function setMyApproval(taskId, mutate) {
   const cur = state.approvals.find(a => a.task_id === taskId && a.user_id === state.uid)
     || { task_id: taskId, user_id: state.uid, household_id: state.household.id, yes_option_id: null, yes_hash: null, passed: [] };
@@ -1321,10 +1374,16 @@ async function setMyApproval(taskId, mutate) {
   mutate(next);
   const row = { task_id: taskId, user_id: state.uid, household_id: state.household.id, yes_option_id: next.yes_option_id, yes_hash: next.yes_hash, passed: next.passed, updated_at: new Date().toISOString() };
   const i = state.approvals.findIndex(a => a.task_id === taskId && a.user_id === state.uid);
+  const before = i >= 0 ? state.approvals[i] : null;
   if (i >= 0) state.approvals[i] = row; else state.approvals.push(row);
   render();
   const { error } = await sb.from('approvals').upsert(row, { onConflict: 'task_id,user_id' });
-  if (error) { toast(friendly(error)); refetchSoon('approvals'); return false; }
+  if (error) {
+    // Undo the optimistic vote so the screen matches what the server has.
+    const j = state.approvals.findIndex(a => a.task_id === taskId && a.user_id === state.uid);
+    if (j >= 0) { if (before) state.approvals[j] = before; else state.approvals.splice(j, 1); }
+    render(); writeFailed(error); refetchSoon('approvals'); return false;
+  }
   return true;
 }
 
@@ -1332,7 +1391,7 @@ function setCapStatus(text, busy) { const el = $('#capStatus'); if (!el) return;
 function fallbackParse(text) {
   const s = text.toLowerCase();
   const pick = [['home', /gutter|yard|lawn|repair|clean|fix|house|hvac|plumb|filter|garage|paint/], ['money', /bill|tax|insur|pay|budget|registration|bank|renew/], ['kids', /kid|school|dentist|pediatric|soccer|practice|boys|daycare/], ['weekend', /weekend|trip|park|movie|camp|visit/]].find(([, re]) => re.test(s));
-  return { title: text.trim().replace(/^./, c => c.toUpperCase()).slice(0, 120), project: pick ? pick[0] : 'us', assignee: null, due: null, due_reason: null, research: false, budget_cents: null };
+  return { title: cut(text.trim().replace(/^./, c => c.toUpperCase()), 120), project: pick ? pick[0] : 'us', assignee: null, due: null, due_reason: null, research: false, budget_cents: null };
 }
 
 /* The typed text stays in the box (read-only) until it is safely saved, so a hang or failure never loses it. */
@@ -1346,7 +1405,7 @@ async function capture() {
   capturing = true; box.readOnly = true; add.disabled = true;
   try {
     if ($('#priv').checked) {
-      const { error } = await sb.from('private_items').insert({ title: text.slice(0, 300) });
+      const { error } = await sb.from('private_items').insert({ title: cut(text, 300) });
       if (error) { toast("Couldn't save that. " + friendly(error)); return; }
       box.value = '';
       setCapStatus('Saved to your private list. Only you can see it.');
@@ -1366,9 +1425,9 @@ async function capture() {
     }
     if (!Array.isArray(parsed) || !parsed.length) parsed = [fallbackParse(text)];
     const rows = parsed.map(p => ({
-      household_id: state.household.id, title: String(p.title || text).slice(0, 200), project: PROJ_IDS.includes(p.project) ? p.project : 'us',
+      household_id: state.household.id, title: cut(p.title || text, 200), project: PROJ_IDS.includes(p.project) ? p.project : 'us',
       assignee: p.assignee || null, due: p.due || null, due_reason: p.due_reason || null, research: !!p.research,
-      budget_cents: p.budget_cents || null, log: [logEntry(`Added: "${text.slice(0, 200)}"`)]
+      budget_cents: p.budget_cents || null, log: [logEntry(`Added: "${cut(text, 200)}"`)]
     }));
     setCapStatus('saving…', true);
     const { data, error } = await sb.from('tasks').insert(rows).select();
@@ -1391,7 +1450,7 @@ async function research(taskId) {
   render();
   try {
     const r = await agent('research', { taskId });
-    if (r && r.ok) nudge('options', taskId);
+    if (r && r.ok && r.count > 0) nudge('options', taskId);
   }
   catch (e) {
     toast(e.code === 'agent_not_configured' ? "The agent isn't set up yet."
@@ -1425,7 +1484,8 @@ async function markDone(taskId) {
   const t = getTask(taskId);
   if (!t) return;
   const prev = t.status;
-  await patchTask(taskId, { status: 'done', prev_status: prev, done_at: new Date().toISOString(), log: (t.log || []).concat(logEntry('Marked done.')) }).catch(() => {});
+  try { await patchTask(taskId, { status: 'done', prev_status: prev, done_at: new Date().toISOString(), log: (t.log || []).concat(logEntry('Marked done.')) }); }
+  catch (e) { return; } // patchTask restored the task and said why
   toast(`Done: ${t.title}`, () => reopen(taskId));
 }
 async function reopen(taskId) {
@@ -1537,10 +1597,14 @@ function setupVoice() {
 function stopVoice() { if (rec && listening) try { rec.stop(); } catch (e) {} }
 
 /* ---------- events ---------- */
+const GHOST_SAFE = new Set(['done', 'undone', 'remove', 'privremove', 'yes', 'unyes', 'pass', 'unpass', 'research', 'book', 'edit', 'optmore', 'filter']);
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]');
   if (!b || b.disabled) return;
   const act = b.dataset.act, id = b.dataset.task, opt = b.dataset.opt;
+  // The list re-renders after each of these, so the second click of a double-click would land on
+  // whatever button moved under the pointer (another task's Remove, or this toggle's opposite).
+  if (e.detail > 1 && GHOST_SAFE.has(act)) return;
   // Show an error under the form and, when it is about one field, mark that field and put focus on it.
   const setErr = (m, fieldId) => {
     state.err = m;
@@ -1619,7 +1683,8 @@ document.addEventListener('click', async e => {
     }
     if (act === 'edit' && id) {
       const t0 = getTask(id); if (!t0) return;
-      state.editing = id; state.editDraft = draftOf(t0); render();
+      // editBase remembers what the form started from, so saving only writes what *you* changed.
+      state.editing = id; state.editDraft = draftOf(t0); state.editBase = draftOf(t0); render();
       const f = document.querySelector(`form[data-edit="${cssq(id)}"] [data-autofocus-edit]`); if (f) f.focus();
       return;
     }
@@ -1629,7 +1694,11 @@ document.addEventListener('click', async e => {
       if (state.expanded.has(k)) state.expanded.delete(k); else state.expanded.add(k);
       render(); return;
     }
-    if (act === 'settings') { renderSettings(); const d = $('#settings'); if (d && !d.open) d.showModal(); return; }
+    if (act === 'settings') {
+      renderSettings(); const d = $('#settings');
+      if (d && !d.open) { d.showModal(); try { history.pushState({ ampSettings: true }, ''); } catch (er) {} }
+      return;
+    }
     if (act === 'closesettings') { const d = $('#settings'); if (d) d.close(); return; }
     if (act === 'settheme') { applyTheme(b.value); toast(b.value === 'system' ? 'Appearance follows your device.' : `${b.value === 'dark' ? 'Dark' : 'Light'} appearance on.`); return; }
     if (act === 'skip') { e.preventDefault(); const l = $('#list'); if (l) { l.focus(); l.scrollIntoView({ block: 'start' }); } return; }
@@ -1683,7 +1752,7 @@ document.addEventListener('click', async e => {
 });
 function closeEdit() {
   const id = state.editing;
-  state.editing = null; state.editDraft = null; render();
+  state.editing = null; state.editDraft = null; state.editBase = null; state.savingEdit = null; render();
   const btn = id && document.querySelector(`[data-act="edit"][data-task="${cssq(id)}"]`);
   if (btn) btn.focus();
 }
@@ -1709,15 +1778,21 @@ document.addEventListener('submit', async e => {
   }
   const due = v('due');
   if (due && !parseDay(due)) { errEl.textContent = 'Pick a valid date, or leave it empty.'; form.elements.due.setAttribute('aria-invalid', 'true'); form.elements.due.focus(); return; }
-  const next = { title: title.slice(0, 200), project: PROJ_IDS.includes(v('project')) ? v('project') : t.project, assignee: v('assignee') || null, due: due || null, due_reason: v('due_reason').slice(0, 60) || null, budget_cents: budget };
+  const next = { title: cut(title, 200), project: PROJ_IDS.includes(v('project')) ? v('project') : t.project, assignee: v('assignee') || null, due: due || null, due_reason: cut(v('due_reason'), 60) || null, budget_cents: budget };
   const labels = { title: 'name', project: 'project', assignee: 'who', due: 'due date', due_reason: 'reason for the date', budget_cents: 'budget' };
+  // Compare with what the form started from, not the live task: a field your partner changed
+  // meanwhile (and you didn't touch) keeps their value.
+  const b0 = state.editBase || draftOf(t);
+  const base = { title: cut(String(b0.title).trim(), 200), project: b0.project, assignee: b0.assignee || null, due: b0.due || null,
+    due_reason: cut(String(b0.due_reason || '').trim(), 60) || null, budget_cents: b0.budget ? Math.round(Number(b0.budget) * 100) : null };
   const patch = {}, changed = [];
-  for (const k in next) if ((t[k] == null ? null : t[k]) !== next[k]) { patch[k] = next[k]; changed.push(labels[k]); }
+  for (const k in next) if (next[k] !== base[k] && (t[k] == null ? null : t[k]) !== next[k]) { patch[k] = next[k]; changed.push(labels[k]); }
   if (!changed.length) { closeEdit(); return; }
   patch.log = (t.log || []).concat(logEntry(`Changed the ${changed.join(', ')}.`));
   const btn = form.querySelector('[type="submit"]'); btn.disabled = true;
+  state.savingEdit = t.id;
   try { await patchTask(t.id, patch); }
-  catch (er) { if (document.contains(btn)) btn.disabled = false; return; }
+  catch (er) { state.savingEdit = null; if (document.contains(btn)) btn.disabled = false; return; }
   closeEdit();
   toast(`Saved: ${next.title}`);
 });
@@ -1775,7 +1850,7 @@ async function onSession(session) {
   state.session = session; state.uid = uid;
   if (!uid) {
     if (channel) { sb.removeChannel(channel); channel = null; }
-    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: '' });
+    Object.assign(state, { household: null, members: [], tasks: [], approvals: [], priv: [], screen: 'signin', sentTo: null, agentOn: null, agentUnreachable: false, live: undefined, loadErrs: {}, prevLabels: null, prevAgreed: null, filter: 'all', err: '', editing: null, editDraft: null, editBase: null, expanded: new Set(), checking: new Set(), fresh: new Set(), prevPartnerYes: null });
     render(); return;
   }
   // A failed lookup is a connection problem, never "you have no household": show a retry screen, not setup.
