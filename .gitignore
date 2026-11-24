@@ -6,3 +6,6 @@ supabase/.branches
 node_modules
 .DS_Store
 tests/.build
+
+# cto-toolkit plugin local telemetry
+.cto-toolkit/
